@@ -3,111 +3,132 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { Bike, ChevronRight, Plus, ShoppingBag } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/auth-client';
 import { Mesa, Zona } from '@/lib/types';
 import { MesaCard } from '@/components/mesero/MesaCard';
+import { PlanoServicio } from '@/components/mesero/salon/PlanoServicio';
+import { AhoraLinea, AhoraPanel } from '@/components/mesero/salon/Ahora';
+import { HojaInferior } from '@/components/mesero/salon/HojaInferior';
+import { duracion } from '@/components/mesero/salon/servicio';
 import { etiquetaCorta, etiquetaMesa } from '@/lib/mesas';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Button } from '@/components/ui/button';
+
+const INTERVALO_MS = 5000;
+
+interface PedidoExterno {
+  id: string;
+  tipo: 'llevar' | 'delivery';
+  nombreCliente: string | null;
+  telefonoCliente: string | null;
+  direccionDelivery: string | null;
+  costoEnvio: string | null;
+  fechaApertura: string;
+  total: string;
+  cantidadItems: number;
+}
 
 export default function MeseroHome() {
   const router = useRouter();
+  const { data: sesion } = useSession();
+  const yo = sesion?.user?.id ?? null;
+
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [zonaActiva, setZonaActiva] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [abriendo, setAbriendo] = useState<string | null>(null);
-  const [abriendoLlevar, setAbriendoLlevar] = useState(false);
-  const [llevarDialogAbierto, setLlevarDialogAbierto] = useState(false);
+  const [actualizado, setActualizado] = useState<number | null>(null);
+  const [sinConexion, setSinConexion] = useState(false);
+  const [ahora, setAhora] = useState(() => Date.now());
+
+  const [abriendo, setAbriendo] = useState(false);
   const [mesaPorAbrir, setMesaPorAbrir] = useState<Mesa | null>(null);
+  const [llevarAbierto, setLlevarAbierto] = useState(false);
+  const [abriendoLlevar, setAbriendoLlevar] = useState(false);
   const [tabActivo, setTabActivo] = useState<'salon' | 'llevar_delivery'>('salon');
-  const [pedidosExternos, setPedidosExternos] = useState<Array<{
-    id: string;
-    tipo: 'llevar' | 'delivery';
-    nombreCliente: string | null;
-    telefonoCliente: string | null;
-    direccionDelivery: string | null;
-    costoEnvio: string | null;
-    fechaApertura: string;
-    total: string;
-    cantidadItems: number;
-  }>>([]);
+  const [pedidosExternos, setPedidosExternos] = useState<PedidoExterno[]>([]);
 
-  const fetchMesas = useCallback(async () => {
-    try {
-      const [data, zs] = await Promise.all([api.mesas.list(), api.zonas.list()]);
-      // Excluir la mesa virtual 0 (para llevar) de la vista de mesas
-      setMesas(data.filter((m) => m.numero !== 0));
-      setZonas(zs);
-    } catch {
-      // silencioso en polling
-    } finally {
-      setCargando(false);
-    }
-  }, []);
-
-  const fetchPedidosExternos = useCallback(async () => {
-    try {
-      const data = await api.visitas.activeLlevarDelivery();
-      setPedidosExternos(data);
-    } catch {
-      // silencioso en polling
-    }
+  const fetchDatos = useCallback(async () => {
+    const [m, z, ext] = await Promise.allSettled([api.mesas.list(), api.zonas.list(), api.visitas.activeLlevarDelivery()]);
+    // Excluir la mesa virtual 0 (para llevar) de la vista de mesas
+    if (m.status === 'fulfilled') setMesas(m.value.filter((x) => x.numero !== 0));
+    if (z.status === 'fulfilled') setZonas(z.value);
+    if (ext.status === 'fulfilled') setPedidosExternos(ext.value);
+    const fallo = m.status === 'rejected';
+    setSinConexion(fallo);
+    if (!fallo) setActualizado(Date.now());
+    setCargando(false);
   }, []);
 
   useEffect(() => {
-    fetchMesas();
-    fetchPedidosExternos();
-    const interval = setInterval(() => {
-      fetchMesas();
-      fetchPedidosExternos();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [fetchMesas, fetchPedidosExternos]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial + sondeo
+    fetchDatos();
+    const id = setInterval(fetchDatos, INTERVALO_MS);
+    return () => clearInterval(id);
+  }, [fetchDatos]);
 
-  async function handleMesaClick(mesa: Mesa) {
-    if (mesa.estado === 'ocupada') {
-      try {
-        const visita = await api.mesas.visitaActiva(mesa.id);
-        router.push(`/mesero/mesa/${visita.id}`);
-      } catch {
-        toast.error('No se encontró la visita activa');
-      }
+  // Reloj para «hace N s» y el tiempo en mesa.
+  useEffect(() => {
+    const id = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const nombre = useCallback((m: Mesa) => etiquetaMesa(m, mesas), [mesas]);
+
+  async function irAMesa(mesa: Mesa) {
+    if (mesa.visita) {
+      router.push(`/mesero/mesa/${mesa.visita.id}`);
       return;
     }
+    try {
+      const visita = await api.mesas.visitaActiva(mesa.id);
+      router.push(`/mesero/mesa/${visita.id}`);
+    } catch {
+      toast.error('No se encontró la visita activa');
+    }
+  }
 
-    setMesaPorAbrir(mesa);
+  function handleMesaClick(mesa: Mesa) {
+    if (mesa.estado === 'ocupada') irAMesa(mesa);
+    else setMesaPorAbrir(mesa);
   }
 
   async function confirmarAbrirMesa() {
     if (!mesaPorAbrir) return;
     const mesa = mesaPorAbrir;
-    setAbriendo(mesa.id);
+    setAbriendo(true);
     try {
       const visita = await api.mesas.abrir(mesa.id);
-      toast.success(`${etiquetaMesa(mesa, mesas)} abierta`);
+      toast.success(`${nombre(mesa)} abierta`);
       setMesaPorAbrir(null);
       router.push(`/mesero/mesa/${visita.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al abrir mesa');
+      toast.error(err instanceof Error ? err.message : 'No se pudo abrir la mesa');
     } finally {
-      setAbriendo(null);
+      setAbriendo(false);
     }
   }
 
-  function handleParaLlevar() {
-    setLlevarDialogAbierto(true);
+  async function entregar(mesa: Mesa) {
+    const rondas = mesa.visita?.rondas.filter((r) => r.estado === 'listo') ?? [];
+    try {
+      await Promise.all(rondas.map((r) => api.pedidos.cambiarEstado(r.id, 'entregado')));
+      toast.success(`${nombre(mesa)}: platos entregados`);
+      await fetchDatos();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo marcar como entregado');
+    }
   }
 
   async function confirmarParaLlevar(nombreCliente: string) {
-    setLlevarDialogAbierto(false);
     setAbriendoLlevar(true);
     try {
       const visita = await api.visitas.abrirParaLlevar({ nombreCliente });
+      setLlevarAbierto(false);
       toast.success('Pedido para llevar abierto');
       router.push(`/mesero/mesa/${visita.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al abrir pedido para llevar');
+      toast.error(err instanceof Error ? err.message : 'No se pudo abrir el pedido para llevar');
     } finally {
       setAbriendoLlevar(false);
     }
@@ -115,8 +136,8 @@ export default function MeseroHome() {
 
   if (cargando) {
     return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        Cargando mesas…
+      <div className="flex h-64 items-center justify-center text-[14px] text-[var(--pizarra)]">
+        Cargando el salón…
       </div>
     );
   }
@@ -125,342 +146,317 @@ export default function MeseroHome() {
   const zona = zonas.find((z) => z.id === zonaActiva) ?? zonas[0] ?? null;
   const zonaDe = (m: Mesa) => (m.zonaId && zonas.some((z) => z.id === m.zonaId) ? m.zonaId : zonas[0]?.id ?? null);
   const mesasZona = zona ? mesas.filter((m) => zonaDe(m) === zona.id) : mesas;
-  const libres = mesasZona.filter((m) => m.estado === 'libre').length;
 
-  // Si la zona usa plano y tiene mesas ubicadas, se dibuja la matriz (con
+  // Si la zona usa plano y tiene mesas ubicadas, se dibuja el plano (con
   // referencias como Entrada o Barra). Si no, grid por número.
   const conPosicion = mesasZona.filter((m) => m.filaPosicion !== null && m.colPosicion !== null);
   const sinPosicion = mesasZona
     .filter((m) => m.filaPosicion === null || m.colPosicion === null)
     .sort((a, b) => a.numero - b.numero);
-  const usarMatriz = (zona?.modo ?? 'plano') === 'plano' && conPosicion.length > 0;
-  const referencias = usarMatriz ? zona?.referencias ?? [] : [];
+  const usarPlano = (zona?.modo ?? 'plano') === 'plano' && conPosicion.length > 0;
+  const porNumero = usarPlano ? sinPosicion : [...mesasZona].sort((a, b) => a.numero - b.numero);
 
-  const filas = usarMatriz
-    ? Math.max(...conPosicion.map((m) => m.filaPosicion!), ...referencias.map((r) => r.fila + (r.alto ?? 1) - 1)) + 1
-    : 0;
-  const cols = usarMatriz
-    ? Math.max(...conPosicion.map((m) => m.colPosicion! + (m.ancho ?? 1) - 1), ...referencias.map((r) => r.col + r.ancho - 1)) + 1
-    : 0;
-  const porNumero = [...mesasZona].sort((a, b) => a.numero - b.numero);
+  const mias = mesas.filter((m) => m.estado === 'ocupada' && m.visita && m.visita.abiertaPor.id === yo);
+
+  const tarjeta = (mesa: Mesa, compacto = false) => (
+    <MesaCard
+      mesa={mesa}
+      etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined}
+      mia={!!mesa.visita && mesa.visita.abiertaPor.id === yo}
+      ahora={ahora}
+      compacto={compacto}
+      ocupado={abriendo && mesaPorAbrir?.id === mesa.id}
+      onClick={() => handleMesaClick(mesa)}
+    />
+  );
+
+  const propsAhora = { mias, ahora, actualizado, sinConexion, nombre, onIr: irAMesa, onEntregar: entregar };
 
   return (
-    <div className="p-5 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-[var(--ink)]">{process.env.NEXT_PUBLIC_STORE_NAME || "FoxEats"}</h2>
-        <span className="text-xs font-medium text-muted-foreground bg-white border border-border px-2.5 py-1 rounded-full">
-          Mesero
-        </span>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-border">
+    <div className="mx-auto w-full max-w-[1280px] space-y-4 px-4 py-4 md:px-6 md:py-5">
+      {/* Salón | Llevar y delivery · Nuevo para llevar */}
+      <div className="flex items-center justify-between gap-3">
+        <div role="tablist" aria-label="Vista" className="inline-flex rounded-[10px] border border-[var(--linea)] bg-white p-[3px]">
+          {([
+            ['salon', 'Salón'],
+            ['llevar_delivery', 'Llevar y delivery'],
+          ] as const).map(([id, label]) => {
+            const on = tabActivo === id;
+            return (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={on}
+                onClick={() => setTabActivo(id)}
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors sm:px-3.5',
+                  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--tinta)]',
+                  on ? 'bg-[var(--tinta)] text-white' : 'text-[var(--pizarra)] hover:text-[var(--ink)]',
+                ].join(' ')}
+              >
+                {label}
+                {id === 'llevar_delivery' && pedidosExternos.length > 0 && (
+                  <span className="rounded-full bg-[var(--aji)] px-1.5 text-[11.5px] leading-[18px] font-bold text-[var(--ink)] tabular-nums">
+                    {pedidosExternos.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <button
-          onClick={() => setTabActivo('salon')}
-          className={[
-            'flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-all',
-            tabActivo === 'salon'
-              ? 'border-[var(--alerta)] text-[var(--alerta)]'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          ].join(' ')}
+          type="button"
+          onClick={() => setLlevarAbierto(true)}
+          disabled={abriendoLlevar}
+          aria-label="Nuevo para llevar"
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[9px] border border-[var(--linea)] bg-white px-2.5 text-[13.5px] font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--piedra)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tinta)] disabled:opacity-50 sm:px-3"
         >
-          🪑 Salón
-        </button>
-        <button
-          onClick={() => setTabActivo('llevar_delivery')}
-          className={[
-            'flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-all',
-            tabActivo === 'llevar_delivery'
-              ? 'border-[var(--alerta)] text-[var(--alerta)]'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          ].join(' ')}
-        >
-          🥡 Llevar / 🛵 Delivery ({pedidosExternos.length})
+          <ShoppingBag className="size-4" strokeWidth={1.9} aria-hidden />
+          <span className="hidden sm:inline">Nuevo para llevar</span>
         </button>
       </div>
 
       {tabActivo === 'salon' ? (
         <>
-          {zonas.length > 1 && (
-            <div role="tablist" aria-label="Zonas" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              {zonas.map((z) => {
-                const on = z.id === zona?.id;
-                const libresZona = mesas.filter((m) => zonaDe(m) === z.id && m.estado === 'libre').length;
-                return (
-                  <button
-                    key={z.id}
-                    role="tab"
-                    aria-selected={on}
-                    onClick={() => setZonaActiva(z.id)}
-                    className={[
-                      'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors',
-                      on
-                        ? 'border-[var(--tinta)] bg-[var(--tinta)] text-white'
-                        : 'border-border bg-white text-[var(--ink)] hover:bg-muted',
-                    ].join(' ')}
-                  >
-                    {z.nombre}
-                    <span className={on ? 'ml-1.5 font-medium text-white/70' : 'ml-1.5 font-medium text-muted-foreground'}>
-                      {libresZona} libre{libresZona !== 1 ? 's' : ''}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{zona && zonas.length > 1 ? zona.nombre : 'Distribución del salón'}</h3>
-            <span className="text-xs text-muted-foreground font-medium">
-              {libres} libre{libres !== 1 ? 's' : ''} · {mesasZona.length - libres} ocupada{mesasZona.length - libres !== 1 ? 's' : ''}
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            {zonas.length > 1 ? (
+              <div role="tablist" aria-label="Zonas" className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]">
+                {zonas.map((z) => {
+                  const on = z.id === zona?.id;
+                  const libres = mesas.filter((m) => zonaDe(m) === z.id && m.estado === 'libre').length;
+                  return (
+                    <button
+                      key={z.id}
+                      role="tab"
+                      aria-selected={on}
+                      onClick={() => setZonaActiva(z.id)}
+                      className={[
+                        'shrink-0 rounded-full border px-3.5 py-1.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tinta)]',
+                        on ? 'border-[var(--tinta)] bg-[var(--tinta)] text-white' : 'border-[var(--linea)] bg-white text-[var(--ink)] hover:bg-[var(--piedra)]',
+                      ].join(' ')}
+                    >
+                      {z.nombre}
+                      <span className={on ? 'ml-1.5 font-medium text-white/70' : 'ml-1.5 font-medium text-[var(--pizarra)]'}>
+                        {libres} libre{libres !== 1 ? 's' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[13.5px] text-[var(--pizarra)]">
+                {mesasZona.filter((m) => m.estado === 'libre').length} libres · {mesasZona.filter((m) => m.estado === 'ocupada').length} ocupadas
+              </p>
+            )}
+            <Leyenda />
           </div>
 
-          {usarMatriz ? (
-            <div className="space-y-4">
-              <div className="-mx-1 overflow-x-auto px-1">
-              <div
-                className="rounded-2xl bg-[var(--piedra)] p-3"
-                style={{
-                  display: 'grid',
-                  // Ancho mínimo por mesa: en teléfono el plano se desplaza en vez de apretarse
-                  gridTemplateColumns: `repeat(${cols}, minmax(104px, 1fr))`,
-                  minWidth: cols * 116,
-                  gridTemplateRows: `repeat(${filas}, auto)`,
-                  gap: '0.75rem',
-                }}
-              >
-                {referencias.map((r) => (
-                  <div
-                    key={r.id}
-                    aria-hidden
-                    style={{ gridRow: `${r.fila + 1} / span ${r.alto ?? 1}`, gridColumn: `${r.col + 1} / span ${r.ancho}` }}
-                    className="flex min-h-[64px] items-center justify-center rounded-2xl px-2 text-xs font-semibold text-muted-foreground [background:repeating-linear-gradient(135deg,#EFEDE6_0_6px,#E6E3DA_6px_12px)]"
-                  >
-                    <span className="truncate">{r.etiqueta}</span>
-                  </div>
-                ))}
-                {conPosicion.map((mesa) => (
-                  <div
-                    key={mesa.id}
-                    style={{ gridRow: mesa.filaPosicion! + 1, gridColumn: `${mesa.colPosicion! + 1} / span ${mesa.ancho ?? 1}` }}
-                    className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}
-                  >
-                    <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
-                  </div>
-                ))}
-              </div>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="min-w-0 space-y-4">
+              <div className="lg:hidden">
+                <AhoraLinea {...propsAhora} />
               </div>
 
-              {/* Mesas sin posición — listado al final */}
-              {sinPosicion.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sin ubicar</p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                    {sinPosicion.map((mesa) => (
-                      <div key={mesa.id} className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}>
-                        <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
+              {mesasZona.length === 0 ? (
+                <div className="rounded-xl border border-[var(--linea)] bg-white px-6 py-12 text-center">
+                  <p className="text-[15px] font-semibold text-[var(--ink)]">Esta zona no tiene mesas</p>
+                  <p className="mt-1 text-[13.5px] text-[var(--pizarra)]">Administración las agrega desde Salón.</p>
+                </div>
+              ) : (
+                <>
+                  {usarPlano && (
+                    <div className="rounded-xl border border-[var(--linea)] bg-[#FBFAF7] [background-image:radial-gradient(#E4E2DA_1px,transparent_1.2px)] [background-size:16px_16px] p-3 sm:p-5">
+                      <PlanoServicio mesas={conPosicion} referencias={zona?.referencias ?? []} render={tarjeta} />
+                    </div>
+                  )}
+
+                  {porNumero.length > 0 && (
+                    <div className="space-y-2">
+                      {usarPlano && <h3 className="text-[13px] font-semibold text-[var(--pizarra)]">Sin ubicar en el plano</h3>}
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(112px,1fr))]">
+                        {porNumero.map((mesa) => (
+                          <div key={mesa.id} className="aspect-square">{tarjeta(mesa)}</div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  )}
+                </>
               )}
-
-              <button
-                onClick={handleParaLlevar}
-                disabled={abriendoLlevar}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <span className="text-2xl leading-none">🥡</span>
-                <span className="text-sm font-semibold text-[var(--tinta)]">
-                  {abriendoLlevar ? 'Abriendo…' : 'Para llevar'}
-                </span>
-              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {porNumero.map((mesa) => (
-                <div key={mesa.id} className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}>
-                  <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
-                </div>
-              ))}
 
-              {/* Botón Para llevar — siempre al final del grid */}
-              <button
-                onClick={handleParaLlevar}
-                disabled={abriendoLlevar}
-                className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 h-full min-h-[100px] disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <span className="text-2xl leading-none">🥡</span>
-                <span className="text-sm font-semibold text-[var(--tinta)]">
-                  {abriendoLlevar ? 'Abriendo…' : 'Para llevar'}
-                </span>
-              </button>
-            </div>
-          )}
+            <aside className="hidden lg:block">
+              <AhoraPanel {...propsAhora} />
+            </aside>
+          </div>
         </>
       ) : (
-        <div className="space-y-4">
-          {/* Botón Para llevar */}
-          <button
-            onClick={handleParaLlevar}
-            disabled={abriendoLlevar}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
-          >
-            <span className="text-2xl leading-none">🥡</span>
-            <span className="text-sm font-semibold text-[var(--tinta)]">
-              {abriendoLlevar ? 'Abriendo…' : 'Nuevo pedido para llevar'}
-            </span>
-          </button>
-
-          {/* List of active external orders */}
-          {pedidosExternos.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground bg-white rounded-2xl border border-border p-6">
-              <p className="text-base font-semibold">Sin pedidos externos activos</p>
-              <p className="text-xs mt-1">Los pedidos para llevar o delivery aparecerán aquí.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {pedidosExternos.map((pedido) => {
-                const hora = new Date(pedido.fechaApertura).toLocaleTimeString('es-PE', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
-                });
-                return (
-                  <div
-                    key={pedido.id}
-                    onClick={() => router.push(`/mesero/mesa/${pedido.id}`)}
-                    className="flex flex-col justify-between p-4 rounded-xl border border-border bg-white hover:border-[var(--tinta)] cursor-pointer transition-all active:scale-[0.98] shadow-xs space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={[
-                        'text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5',
-                        pedido.tipo === 'delivery'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-[var(--tinta)]/20 text-[var(--tinta)]'
-                      ].join(' ')}>
-                        {pedido.tipo === 'delivery' ? '🛵 Delivery' : '🥡 Para llevar'}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{hora}</span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="font-bold text-sm text-[var(--ink)] leading-none">
-                        {pedido.nombreCliente ?? 'Cliente sin nombre'}
-                      </p>
-                      {pedido.tipo === 'delivery' && pedido.direccionDelivery && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          Dir: {pedido.direccionDelivery}
-                        </p>
-                      )}
-                      {pedido.telefonoCliente && (
-                        <p className="text-xs text-muted-foreground leading-none">
-                          Telf: {pedido.telefonoCliente}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-baseline justify-between pt-2 border-t border-border/60">
-                      <span className="text-xs text-muted-foreground">
-                        {pedido.cantidadItems} {pedido.cantidadItems === 1 ? 'producto' : 'productos'}
-                      </span>
-                      <span className="text-sm font-bold text-[var(--ink)]">
-                        S/{pedido.total}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <ListaExternos pedidos={pedidosExternos} ahora={ahora} onAbrir={(id) => router.push(`/mesero/mesa/${id}`)} onNuevo={() => setLlevarAbierto(true)} />
       )}
 
-      <ConfirmDialog
+      <HojaInferior
         open={!!mesaPorAbrir}
-        title={mesaPorAbrir ? `Abrir ${mesaPorAbrir.tipo === 'barra' ? `${etiquetaMesa(mesaPorAbrir, mesas)} (Nº ${mesaPorAbrir.numero})` : `mesa ${mesaPorAbrir.numero}`}` : ''}
-        description="Se abrirá una nueva visita y la mesa quedará ocupada."
-        confirmLabel="Abrir mesa"
-        loading={!!abriendo}
-        onConfirm={confirmarAbrirMesa}
-        onCancel={() => setMesaPorAbrir(null)}
-      />
+        onClose={() => setMesaPorAbrir(null)}
+        bloqueada={abriendo}
+        titulo={mesaPorAbrir ? `Abrir ${nombre(mesaPorAbrir)}` : 'Abrir mesa'}
+      >
+        {mesaPorAbrir && (
+          <AbrirMesa
+            mesa={mesaPorAbrir}
+            nombre={nombre(mesaPorAbrir)}
+            zona={zonas.length > 1 ? zonas.find((z) => z.id === zonaDe(mesaPorAbrir))?.nombre ?? null : null}
+            abriendo={abriendo}
+            onConfirmar={confirmarAbrirMesa}
+            onCancelar={() => setMesaPorAbrir(null)}
+          />
+        )}
+      </HojaInferior>
 
-      <NombreClienteDialog
-        open={llevarDialogAbierto}
-        loading={abriendoLlevar}
-        onConfirm={confirmarParaLlevar}
-        onCancel={() => setLlevarDialogAbierto(false)}
-      />
+      <HojaInferior open={llevarAbierto} onClose={() => setLlevarAbierto(false)} bloqueada={abriendoLlevar} titulo="Nuevo pedido para llevar">
+        {llevarAbierto && (
+          <NombreCliente loading={abriendoLlevar} onConfirm={confirmarParaLlevar} onCancel={() => setLlevarAbierto(false)} />
+        )}
+      </HojaInferior>
     </div>
   );
 }
 
-interface NombreClienteDialogProps {
-  open: boolean;
-  loading: boolean;
-  onConfirm: (nombre: string) => void;
-  onCancel: () => void;
+function Leyenda() {
+  return (
+    <div aria-hidden className="hidden shrink-0 items-center gap-4 text-[12.5px] text-[var(--pizarra)] md:flex">
+      <span className="inline-flex items-center gap-1.5"><i className="size-3.5 rounded-[4px] border border-[#C9CBD6] bg-white" />Libre</span>
+      <span className="inline-flex items-center gap-1.5"><i className="size-3.5 rounded-[4px] bg-[var(--tinta)]" />Tuya</span>
+      <span className="inline-flex items-center gap-1.5"><i className="size-3.5 rounded-[4px] border border-[#D5D9E6] bg-[var(--tinta-tint)]" />De otro mesero</span>
+    </div>
+  );
 }
 
-function NombreClienteDialog({ open, loading, onConfirm, onCancel }: NombreClienteDialogProps) {
-  const [nombre, setNombre] = useState('');
-
-  useEffect(() => {
-    if (open) setNombre('');
-  }, [open]);
-
-  if (!open) return null;
-
-  const nombreLimpio = nombre.trim();
-  const puedeConfirmar = nombreLimpio.length > 0 && !loading;
+function AbrirMesa({
+  mesa, nombre, zona, abriendo, onConfirmar, onCancelar,
+}: {
+  mesa: Mesa; nombre: string; zona: string | null; abriendo: boolean; onConfirmar: () => void; onCancelar: () => void;
+}) {
+  const detalle = [
+    zona,
+    mesa.tipo === 'barra' ? `Nº ${mesa.numero}` : null,
+    mesa.capacidad ? `para ${mesa.capacidad} persona${mesa.capacidad !== 1 ? 's' : ''}` : null,
+    'libre',
+  ].filter(Boolean).join(' · ');
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50"
-      onClick={() => !loading && onCancel()}
-    >
-      <div
-        className="w-full max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 space-y-4"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{nombre}</h2>
+      <p className="mt-0.5 mb-4 text-[13.5px] text-[var(--pizarra)]">{detalle}</p>
+      <button
+        type="button"
+        autoFocus
+        onClick={onConfirmar}
+        disabled={abriendo}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--tinta)] py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-[var(--tinta-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--aji)] disabled:opacity-60"
       >
-        <div className="space-y-1">
-          <h2 className="font-bold text-[var(--ink)] text-lg">Nuevo pedido para llevar</h2>
-          <p className="text-xs text-muted-foreground">Por favor, ingresa el nombre del cliente para identificar el pedido.</p>
-        </div>
+        <Plus className="size-4" strokeWidth={2.2} aria-hidden />
+        {abriendo ? 'Abriendo…' : `Abrir ${nombre.toLowerCase().startsWith('mesa') ? `mesa ${mesa.numero}` : nombre}`}
+      </button>
+      <button type="button" onClick={onCancelar} disabled={abriendo} className="mt-1 w-full py-2.5 text-[14px] font-medium text-[var(--pizarra)] hover:text-[var(--ink)] disabled:opacity-50">
+        Cancelar
+      </button>
+    </>
+  );
+}
 
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-muted-foreground uppercase">Nombre del cliente *</label>
-          <input
-            type="text"
-            placeholder="Ej: Juan Pérez"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            disabled={loading}
-            autoFocus
-            className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--tinta)] bg-white text-[var(--ink)] font-medium"
-          />
-        </div>
+function NombreCliente({ loading, onConfirm, onCancel }: { loading: boolean; onConfirm: (nombre: string) => void; onCancel: () => void }) {
+  const [nombre, setNombre] = useState('');
+  const limpio = nombre.trim();
 
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            className="text-sm text-muted-foreground hover:text-foreground px-4 py-2 disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <Button
-            onClick={() => onConfirm(nombreLimpio)}
-            disabled={!puedeConfirmar}
-            className="bg-[var(--tinta)] hover:bg-[var(--tinta-hover)] text-white font-semibold disabled:opacity-40"
-          >
-            {loading ? 'Abriendo…' : 'Iniciar pedido'}
-          </Button>
-        </div>
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (limpio && !loading) onConfirm(limpio);
+      }}
+    >
+      <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Nuevo pedido para llevar</h2>
+      <p className="mt-0.5 mb-4 text-[13.5px] text-[var(--pizarra)]">Con el nombre se identifica el pedido en cocina y en caja.</p>
+      <label htmlFor="nombre-llevar" className="mb-1.5 block text-[13px] font-semibold text-[var(--ink)]">Nombre del cliente</label>
+      <input
+        id="nombre-llevar"
+        type="text"
+        placeholder="Ej.: Juan Pérez"
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        disabled={loading}
+        autoFocus
+        autoComplete="off"
+        className="h-11 w-full rounded-[10px] border border-[var(--linea)] bg-white px-3 text-[15px] text-[var(--ink)] placeholder:text-[#8A8D98] focus:border-[var(--tinta)] focus:outline-none focus:ring-2 focus:ring-[var(--tinta)]/20"
+      />
+      <button
+        type="submit"
+        disabled={!limpio || loading}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--tinta)] py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-[var(--tinta-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--aji)] disabled:opacity-40"
+      >
+        {loading ? 'Abriendo…' : 'Iniciar pedido'}
+      </button>
+      <button type="button" onClick={onCancel} disabled={loading} className="mt-1 w-full py-2.5 text-[14px] font-medium text-[var(--pizarra)] hover:text-[var(--ink)] disabled:opacity-50">
+        Cancelar
+      </button>
+    </form>
+  );
+}
+
+function ListaExternos({
+  pedidos, ahora, onAbrir, onNuevo,
+}: { pedidos: PedidoExterno[]; ahora: number; onAbrir: (id: string) => void; onNuevo: () => void }) {
+  if (pedidos.length === 0) {
+    return (
+      <div className="rounded-[10px] border border-[var(--linea)] bg-white px-6 py-12 text-center">
+        <p className="text-[15px] font-semibold text-[var(--ink)]">No hay pedidos para llevar ni delivery abiertos</p>
+        <p className="mx-auto mt-1 max-w-[44ch] text-[13.5px] text-[var(--pizarra)]">Cuando se abra uno aparecerá aquí, del más antiguo al más nuevo.</p>
+        <button
+          type="button"
+          onClick={onNuevo}
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-[9px] bg-[var(--tinta)] px-3.5 text-[13.5px] font-semibold text-white hover:bg-[var(--tinta-hover)]"
+        >
+          <ShoppingBag className="size-4" strokeWidth={1.9} aria-hidden />Nuevo para llevar
+        </button>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <ul className="mx-auto max-w-[860px] divide-y divide-[var(--linea)] overflow-hidden rounded-[10px] border border-[var(--linea)] bg-white">
+      {[...pedidos]
+        .sort((a, b) => new Date(a.fechaApertura).getTime() - new Date(b.fechaApertura).getTime())
+        .map((p) => {
+          const min = Math.max(0, Math.floor((ahora - new Date(p.fechaApertura).getTime()) / 60000));
+          const delivery = p.tipo === 'delivery';
+          const detalle = [
+            delivery ? 'Delivery' : 'Para llevar',
+            `${p.cantidadItems} producto${p.cantidadItems !== 1 ? 's' : ''}`,
+            delivery ? p.direccionDelivery : null,
+          ].filter(Boolean).join(' · ');
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => onAbrir(p.id)}
+                className="group grid w-full grid-cols-[44px_minmax(0,1fr)_auto_auto] items-center gap-3.5 px-4 py-3 text-left transition-colors hover:bg-[var(--piedra)]/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--tinta)]"
+              >
+                <span className="grid size-11 place-items-center rounded-[9px] bg-[var(--tinta-tint)] text-[var(--tinta)]">
+                  {delivery ? <Bike className="size-5" strokeWidth={1.9} aria-hidden /> : <ShoppingBag className="size-5" strokeWidth={1.9} aria-hidden />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-semibold text-[var(--ink)]">{p.nombreCliente ?? 'Cliente sin nombre'}</span>
+                  <span className="block truncate text-[13px] text-[var(--pizarra)]">{detalle}</span>
+                </span>
+                <span className="text-right">
+                  <span className="block text-[15px] font-semibold text-[var(--ink)] tabular-nums">S/ {Number(p.total).toFixed(2)}</span>
+                  <span className="block text-[12.5px] text-[var(--pizarra)] tabular-nums">hace {duracion(min)}</span>
+                </span>
+                <ChevronRight className="size-4 text-[#9A9DA8] transition-transform group-hover:translate-x-0.5" strokeWidth={1.9} aria-hidden />
+              </button>
+            </li>
+          );
+        })}
+    </ul>
   );
 }

@@ -21,6 +21,25 @@ export interface Mesa {
   zonaId: string | null;
   ancho: number;
   tipo: TipoMesa;
+  /** Visita abierta de la mesa ocupada (null si está libre). */
+  visita?: VisitaEnMesa | null;
+}
+
+export interface RondaActiva {
+  id: string;
+  estado: 'pendiente' | 'en_preparacion' | 'listo';
+  /** Minutos desde que se envió a cocina. */
+  minutos: number;
+  platos: Array<{ nombre: string; cantidad: number }>;
+}
+
+export interface VisitaEnMesa {
+  id: string;
+  abiertaDesde: string;
+  abiertaPor: { id: string; nombre: string };
+  /** Rondas en cocina o listas, de la más antigua a la más nueva. */
+  rondas: RondaActiva[];
+  rondasEntregadas: number;
 }
 
 export type TipoMesa = 'mesa' | 'barra';
