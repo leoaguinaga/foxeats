@@ -1,734 +1,508 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChefHat, Package, Plus, RotateCcw, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { PlatoCarta, CategoriaCarta } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import type { CategoriaCarta, PlatoCarta } from '@/lib/types';
+import { Segmentado, botonCls, botonPrimarioCls } from '@/components/admin/salon/controles';
+import { FilaPlato, columnasFila } from '@/components/admin/carta/FilaPlato';
+import { CargaRapida } from '@/components/admin/carta/CargaRapida';
+import { PlatoPanel, type PanelPlato } from '@/components/admin/carta/PlatoPanel';
+import { CategoriasPanel } from '@/components/admin/carta/CategoriasPanel';
+import { type FiltroCarta, categoriaDe, pasaFiltro, plural, sinVincular } from '@/components/admin/carta/carta';
 
-type FormState = {
-  nombre: string;
-  precio: string;
-  categoriaId: string;
-};
-
-// ─── Modal de edición ─────────────────────────────────────────────────────────
-
-function EditModal({ plato, categorias, onClose, onSaved }: {
-  plato: PlatoCarta;
-  categorias: CategoriaCarta[];
-  onClose: () => void;
-  onSaved: (p: PlatoCarta) => void;
-}) {
-  const [form, setForm] = useState<FormState>({
-    nombre:              plato.nombre,
-    precio:              plato.precio,
-    categoriaId:         plato.categoriaId || plato.categoria?.id || (categorias[0]?.id ?? ''),
-  });
-  const [guardando, setGuardando] = useState(false);
-
-  async function handleGuardar() {
-    if (!form.nombre || !form.precio || !form.categoriaId) { toast.error('Completa nombre, precio y categoría'); return; }
-    const precio = parseFloat(form.precio);
-    if (isNaN(precio) || precio <= 0) { toast.error('Precio inválido'); return; }
-
-    setGuardando(true);
-    try {
-      const updated = await api.admin.editarPlato(plato.id, {
-        nombre:              form.nombre,
-        precio:              precio.toFixed(2),
-        categoriaId:         form.categoriaId,
-      });
-      onSaved({
-        ...plato,
-        ...updated,
-        stockActual:        plato.stockActual,
-        nombreUnidadMinima: plato.nombreUnidadMinima,
-      });
-      toast.success(`"${form.nombre}" actualizado`);
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al guardar');
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-white rounded-t-3xl sm:rounded-2xl shadow-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-[var(--carbon)]">Editar plato</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-[var(--carbon)] text-xl leading-none">×</button>
-        </div>
-
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Nombre</label>
-            <input
-              type="text"
-              value={form.nombre}
-              onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
-              className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Precio (S/)</label>
-            <input
-              type="number" min="0" step="0.50"
-              value={form.precio}
-              onChange={(e) => setForm((p) => ({ ...p, precio: e.target.value }))}
-              className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Categoría</label>
-            <select
-              value={form.categoriaId}
-              onChange={(e) => setForm((p) => ({ ...p, categoriaId: e.target.value }))}
-              className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)] bg-white"
-            >
-              {categorias.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 h-10 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors">
-            Cancelar
-          </button>
-          <Button
-            className="flex-1 h-10 bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-semibold"
-            onClick={handleGuardar}
-            disabled={guardando}
-          >
-            {guardando ? 'Guardando…' : 'Guardar'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BulkModal({
-  categorias,
-  onClose,
-  onSaved,
-}: {
-  categorias: CategoriaCarta[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [categoriaId, setCategoriaId] = useState<string>(categorias[0]?.id ?? '');
-  const [filas, setFilas] = useState<Array<{ tempId: number; nombre: string; precio: string; descripcion: string }>>([
-    { tempId: 1, nombre: '', precio: '', descripcion: '' },
-  ]);
-  const [guardando, setGuardando] = useState(false);
-  const [nextTempId, setNextTempId] = useState(2);
-
-  function agregarFila() {
-    setFilas((prev) => [...prev, { tempId: nextTempId, nombre: '', precio: '', descripcion: '' }]);
-    setNextTempId((id) => id + 1);
-  }
-
-  function quitarFila(tempId: number) {
-    if (filas.length === 1) {
-      setFilas([{ tempId: nextTempId, nombre: '', precio: '', descripcion: '' }]);
-      setNextTempId((id) => id + 1);
-      return;
-    }
-    setFilas((prev) => prev.filter((f) => f.tempId !== tempId));
-  }
-
-  function updateFila(tempId: number, field: 'nombre' | 'precio' | 'descripcion', val: string) {
-    setFilas((prev) => prev.map((f) => f.tempId === tempId ? { ...f, [field]: val } : f));
-  }
-
-  async function handleGuardar() {
-    const filasValidas = filas.filter((f) => f.nombre.trim() !== '' && f.precio.trim() !== '');
-    if (filasValidas.length === 0) {
-      toast.error('Añade al menos un plato con nombre y precio');
-      return;
-    }
-    if (!categoriaId) {
-      toast.error('Selecciona una categoría para el lote');
-      return;
-    }
-
-    for (const f of filasValidas) {
-      const p = parseFloat(f.precio);
-      if (isNaN(p) || p <= 0) {
-        toast.error(`Precio inválido en el plato "${f.nombre}"`);
-        return;
-      }
-    }
-
-    setGuardando(true);
-    try {
-      await api.admin.crearPlatosBulk({
-        categoriaId,
-        platos: filasValidas.map((f) => ({
-          nombre: f.nombre.trim(),
-          precio: parseFloat(f.precio).toFixed(2),
-          descripcion: f.descripcion.trim() || undefined,
-        })),
-      });
-
-      toast.success(`${filasValidas.length} platos creados exitosamente`);
-      onSaved();
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al guardar el lote');
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl p-6 flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
-          <div>
-            <h3 className="font-semibold text-lg text-[var(--carbon)]">Crear platos en lote</h3>
-            <p className="text-xs text-muted-foreground">Todos los productos ingresados pertenecerán a la misma categoría seleccionada</p>
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-[var(--carbon)] text-xl leading-none">×</button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 py-4 space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground uppercase">Categoría para el lote *</label>
-            <select
-              value={categoriaId}
-              onChange={(e) => setCategoriaId(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)] bg-white"
-            >
-              {categorias.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-xs font-semibold text-muted-foreground uppercase">Platos a registrar</label>
-            
-            <div className="space-y-2">
-              {filas.map((fila, idx) => (
-                <div key={fila.tempId} className="flex gap-2 items-center bg-gray-50/50 p-2.5 rounded-xl border border-border/50">
-                  <span className="text-xs font-bold text-muted-foreground w-4 shrink-0 text-center">{idx + 1}</span>
-                  
-                  <div className="flex-1 min-w-0">
-                    <input
-                      type="text"
-                      placeholder="Nombre del plato *"
-                      value={fila.nombre}
-                      onChange={(e) => updateFila(fila.tempId, 'nombre', e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-border text-xs focus:outline-none focus:ring-1 focus:ring-[var(--dorado)] bg-white"
-                    />
-                  </div>
-
-                  <div className="w-24 shrink-0">
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">S/</span>
-                      <input
-                        type="number"
-                        step="0.50"
-                        placeholder="Precio *"
-                        value={fila.precio}
-                        onChange={(e) => updateFila(fila.tempId, 'precio', e.target.value)}
-                        className="w-full h-9 pl-6 pr-1.5 rounded-lg border border-border text-xs focus:outline-none focus:ring-1 focus:ring-[var(--dorado)] bg-white text-right"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <input
-                      type="text"
-                      placeholder="Descripción (opcional)"
-                      value={fila.descripcion}
-                      onChange={(e) => updateFila(fila.tempId, 'descripcion', e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-border text-xs focus:outline-none focus:ring-1 focus:ring-[var(--dorado)] bg-white"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => quitarFila(fila.tempId)}
-                    className="text-muted-foreground hover:text-[var(--terracota)] p-1.5 rounded-lg hover:bg-muted shrink-0 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={agregarFila}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[var(--carbon)] transition-colors font-medium pt-1"
-            >
-              <Plus size={14} className="mr-1" /> Añadir otra fila
-            </button>
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-3 border-t border-border shrink-0">
-          <button onClick={onClose} className="flex-1 h-11 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors font-medium">
-            Cancelar
-          </button>
-          <Button
-            className="flex-1 h-11 bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-bold"
-            onClick={handleGuardar}
-            disabled={guardando}
-          >
-            {guardando ? 'Guardando lote…' : `Guardar lote (${filas.filter((f) => f.nombre.trim() !== '' && f.precio.trim() !== '').length} platos)`}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Modal de Gestión de Categorías ───────────────────────────────────────────
-
-function CategoriasModal({
-  categorias,
-  onClose,
-  onRefresh,
-}: {
-  categorias: CategoriaCarta[];
-  onClose: () => void;
-  onRefresh: () => void;
-}) {
-  const [nombre, setNombre] = useState('');
-  const [descuentaStock, setDescuentaStock] = useState(false);
-  const [esParaCocina, setEsParaCocina] = useState(true);
-  const [guardando, setGuardando] = useState(false);
-  const [actualizandoId, setActualizandoId] = useState<string | null>(null);
-
-  async function handleCrear() {
-    if (!nombre.trim()) {
-      toast.error('Ingresa el nombre de la categoría');
-      return;
-    }
-    setGuardando(true);
-    try {
-      await api.categorias.create({
-        nombre: nombre.trim(),
-        descuentaStock,
-        esParaCocina,
-      });
-      toast.success(`Categoría "${nombre.trim()}" creada`);
-      setNombre('');
-      setDescuentaStock(false);
-      setEsParaCocina(true);
-      onRefresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al crear categoría');
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  async function handleToggleProp(
-    cat: CategoriaCarta,
-    field: 'descuentaStock' | 'esParaCocina',
-    value: boolean,
-  ) {
-    setActualizandoId(cat.id);
-    try {
-      await api.categorias.update(cat.id, { [field]: value });
-      toast.success(`Categoría "${cat.nombre}" actualizada`);
-      onRefresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al actualizar');
-    } finally {
-      setActualizandoId(null);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 flex flex-col max-h-[85vh] space-y-4">
-        <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
-          <div>
-            <h3 className="font-semibold text-lg text-[var(--carbon)]">Gestión de Categorías</h3>
-            <p className="text-xs text-muted-foreground">Crea nuevas categorías y configura sus reglas de stock e impresión</p>
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-[var(--carbon)] text-xl leading-none">×</button>
-        </div>
-
-        {/* Crear nueva categoría */}
-        <div className="rounded-xl border border-border bg-gray-50/60 p-4 space-y-3 shrink-0">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nueva Categoría</p>
-          <div className="space-y-2">
-            <input
-              type="text"
-              placeholder="Ej: Postres, Pescados, Vinos…"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)] bg-white"
-            />
-            <div className="grid grid-cols-2 gap-2 text-xs text-[var(--carbon)] pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={esParaCocina}
-                  onChange={(e) => setEsParaCocina(e.target.checked)}
-                  className="rounded border-border text-[var(--dorado)] focus:ring-[var(--dorado)]"
-                />
-                <span>Enviar comanda a Cocina</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={descuentaStock}
-                  onChange={(e) => setDescuentaStock(e.target.checked)}
-                  className="rounded border-border text-[var(--dorado)] focus:ring-[var(--dorado)]"
-                />
-                <span>Descuenta Stock (Reventa)</span>
-              </label>
-            </div>
-          </div>
-          <Button
-            onClick={handleCrear}
-            disabled={guardando || !nombre.trim()}
-            className="w-full h-9 bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-semibold text-xs"
-          >
-            {guardando ? 'Guardando…' : '+ Crear categoría'}
-          </Button>
-        </div>
-
-        {/* Listado de categorías */}
-        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Categorías Activas ({categorias.length})</p>
-          {categorias.map((cat) => (
-            <div key={cat.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-white text-sm">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-[var(--carbon)] truncate">{cat.nombre}</p>
-                <p className="text-[11px] text-muted-foreground truncate">slug: {cat.slug}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => handleToggleProp(cat, 'esParaCocina', !cat.esParaCocina)}
-                  disabled={actualizandoId === cat.id}
-                  className={[
-                    'text-[10px] font-semibold px-2.5 py-1 rounded-full transition-colors',
-                    cat.esParaCocina ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500 line-through',
-                  ].join(' ')}
-                  title="Toggle impresión en cocina"
-                >
-                  {cat.esParaCocina ? 'Cocina ✓' : 'Sin cocina'}
-                </button>
-                <button
-                  onClick={() => handleToggleProp(cat, 'descuentaStock', !cat.descuentaStock)}
-                  disabled={actualizandoId === cat.id}
-                  className={[
-                    'text-[10px] font-semibold px-2.5 py-1 rounded-full transition-colors',
-                    cat.descuentaStock ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500',
-                  ].join(' ')}
-                  title="Toggle descuento automático de stock"
-                >
-                  {cat.descuentaStock ? 'Stock 📉' : 'Sin stock'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Página principal ─────────────────────────────────────────────────────────
-
-export default function AdminCatalogoPage() {
-  const [platos, setPlatos]       = useState<PlatoCarta[]>([]);
+export default function AdminCartaPage() {
+  const [platos, setPlatos] = useState<PlatoCarta[]>([]);
   const [categorias, setCategorias] = useState<CategoriaCarta[]>([]);
-  const [cargando, setCargando]   = useState(true);
-  const [toggling, setToggling]   = useState<string | null>(null);
-  const [editando, setEditando]   = useState<PlatoCarta | null>(null);
-  const [form, setForm]           = useState<FormState>({ nombre: '', precio: '', categoriaId: '' });
-  const [guardando, setGuardando] = useState(false);
-  const [formAbierto, setFormAbierto] = useState(false);
-  const [busqueda, setBusqueda]   = useState('');
-  const [filtroCat, setFiltroCat] = useState<'todas' | string>('todas');
-  const [bulkModalAbierto, setBulkModalAbierto] = useState(false);
-  const [categoriasModalAbierto, setCategoriasModalAbierto] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [filtro, setFiltro] = useState<FiltroCarta>('carta');
+  const [carga, setCarga] = useState<{ categoriaId: string; nombre?: string } | null>(null);
+  const [panel, setPanel] = useState<PanelPlato | null>(null);
+  const [panelCategorias, setPanelCategorias] = useState(false);
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [activa, setActiva] = useState<string | null>(null);
+  const buscador = useRef<HTMLInputElement>(null);
 
-  const fetchPlatos = useCallback(async () => {
+  const cargar = useCallback(async () => {
     try {
-      const [resPlatos, catData] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/platos`, { credentials: 'include' }).then((r) => r.json()),
-        api.categorias.list().catch(() => []),
-      ]);
-      if (Array.isArray(resPlatos)) setPlatos(resPlatos);
-      if (Array.isArray(catData)) {
-        setCategorias(catData);
-        setForm((f) => (f.categoriaId ? f : { ...f, categoriaId: catData[0]?.id ?? '' }));
-      }
-    } catch { /* silencioso */ }
-    finally { setCargando(false); }
+      const [ps, cs] = await Promise.all([api.platos.listAdmin(), api.categorias.list()]);
+      setPlatos(ps);
+      setCategorias(cs);
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setCargando(false);
+    }
   }, []);
 
   useEffect(() => {
-    fetchPlatos();
-    const id = setInterval(fetchPlatos, 20000);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial
+    cargar();
+    const id = setInterval(cargar, 30000);
     return () => clearInterval(id);
-  }, [fetchPlatos]);
+  }, [cargar]);
 
-  async function handleToggleDisponible(plato: PlatoCarta) {
-    setToggling(plato.id + '_disp');
-    try {
-      await api.menu.toggleDisponible(plato.id, !plato.disponible);
-      setPlatos((prev) => prev.map((p) => p.id === plato.id ? { ...p, disponible: !p.disponible } : p));
-      toast.success(!plato.disponible ? `"${plato.nombre}" disponible` : `"${plato.nombre}" sin stock`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
-    } finally { setToggling(null); }
-  }
+  // «/» enfoca el buscador, como en el resto del panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key !== '/' || t.closest('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      buscador.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
-  async function handleToggleActivo(plato: PlatoCarta) {
-    setToggling(plato.id + '_activo');
-    const nuevoActivo = !plato.activo;
-    try {
-      await api.admin.toggleActivoPlato(plato.id, nuevoActivo);
-      setPlatos((prev) => prev.map((p) => p.id === plato.id ? { ...p, activo: nuevoActivo } : p));
-      toast.success(nuevoActivo ? `"${plato.nombre}" activado en carta` : `"${plato.nombre}" retirado de carta`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
-    } finally { setToggling(null); }
-  }
+  const catPorId = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+  const enCarta = platos.filter((p) => p.activo);
+  const agotados = enCarta.filter((p) => !p.disponible).length;
+  const retirados = platos.length - enCarta.length;
 
-  async function handleCrearPlato() {
-    if (!form.nombre || !form.precio || !form.categoriaId) { toast.error('Completa nombre, precio y categoría'); return; }
-    const precio = parseFloat(form.precio);
-    if (isNaN(precio) || precio <= 0) { toast.error('Precio inválido'); return; }
+  const conteo = useMemo(() => {
+    const r: Record<string, number> = {};
+    for (const p of platos) if (p.activo) r[categoriaDe(p)] = (r[categoriaDe(p)] ?? 0) + 1;
+    return r;
+  }, [platos]);
+  const sinVincularPor = useMemo(() => {
+    const r: Record<string, number> = {};
+    for (const p of platos) {
+      const id = categoriaDe(p);
+      if (sinVincular(p, catPorId.get(id))) r[id] = (r[id] ?? 0) + 1;
+    }
+    return r;
+  }, [platos, catPorId]);
 
-    setGuardando(true);
-    try {
-      await api.admin.crearPlato({
-        nombre:      form.nombre,
-        precio:      precio.toFixed(2),
-        categoriaId: form.categoriaId,
-      });
-      toast.success(`"${form.nombre}" agregado a la carta`);
-      setForm({ nombre: '', precio: '', categoriaId: categorias[0]?.id ?? '' });
-      setFormAbierto(false);
-      fetchPlatos();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error');
-    } finally { setGuardando(false); }
-  }
-
-  const PlatoRow = ({ plato }: { plato: PlatoCarta }) => (
-    <div className={['flex items-center gap-2 px-4 py-3', !plato.activo ? 'opacity-50' : ''].join(' ')}>
-      <div className="flex-1 min-w-0">
-        <p className={['font-medium truncate', !plato.disponible ? 'text-muted-foreground line-through' : 'text-[var(--carbon)]'].join(' ')}>
-          {plato.nombre}
-        </p>
-        <p className="text-sm text-muted-foreground">S/{plato.precio}</p>
-      </div>
-
-      <button
-        onClick={() => setEditando(plato)}
-        title="Editar"
-        className="shrink-0 text-muted-foreground hover:text-[var(--carbon)] px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-sm"
-      >
-        ✎
-      </button>
-
-      <button
-        onClick={() => handleToggleDisponible(plato)}
-        disabled={toggling === plato.id + '_disp' || !plato.activo}
-        className={['shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors disabled:opacity-40',
-          plato.disponible ? 'bg-[var(--salvia)]/15 text-[var(--salvia)] hover:bg-[var(--salvia)]/25'
-                           : 'bg-[var(--terracota)]/15 text-[var(--terracota)] hover:bg-[var(--terracota)]/25',
-        ].join(' ')}
-      >
-        {toggling === plato.id + '_disp' ? '…' : plato.disponible ? 'Hay' : 'No hay'}
-      </button>
-
-      <button
-        onClick={() => handleToggleActivo(plato)}
-        disabled={toggling === plato.id + '_activo'}
-        title={plato.activo ? 'Retirar de carta' : 'Volver a carta'}
-        className="shrink-0 text-xs text-muted-foreground hover:text-[var(--carbon)] px-2 py-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
-      >
-        {toggling === plato.id + '_activo' ? '…' : plato.activo ? 'En carta' : 'Retirado'}
-      </button>
-    </div>
+  const q = busqueda.trim().toLowerCase();
+  const visibles = platos.filter((p) =>
+    pasaFiltro(p, filtro) &&
+    (!q || p.nombre.toLowerCase().includes(q) || (p.descripcion ?? '').toLowerCase().includes(q)),
   );
+  // Sin búsqueda ni filtro se muestran todas las categorías, también las vacías, para ver qué falta cargar.
+  const mostrarVacias = !q && filtro === 'carta';
+  const secciones = categorias
+    .map((c) => ({ cat: c, items: visibles.filter((p) => categoriaDe(p) === c.id) }))
+    .filter((s) => s.items.length > 0 || mostrarVacias || carga?.categoriaId === s.cat.id);
+  const ordenVisible = secciones.flatMap((s) => s.items);
 
-  const sinStock = platos.filter((p) => p.activo && !p.disponible).length;
+  // Índice: marca la categoría que está a la vista.
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-categoria]'));
+    if (!els.length) return;
+    const obs = new IntersectionObserver(
+      (entradas) => {
+        const vista = entradas.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (vista) setActiva(vista.target.getAttribute('data-categoria'));
+      },
+      { rootMargin: '-80px 0px -60% 0px' },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [secciones.length, filtro, q]);
 
-  if (cargando) return <div className="flex items-center justify-center h-64 text-muted-foreground">Cargando carta…</div>;
+  function irA(id: string) {
+    const el = document.getElementById(`cat-${id}`);
+    if (!el) return;
+    const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reducido ? 'auto' : 'smooth', block: 'start' });
+    setActiva(id);
+  }
+
+  // ── Acciones sobre un plato ──────────────────────────────
+  function reemplazar(p: PlatoCarta) {
+    setPlatos((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...p } : x)));
+  }
+
+  async function cambiarDisponible(p: PlatoCarta, disponible: boolean) {
+    reemplazar({ ...p, disponible });
+    try {
+      await api.menu.toggleDisponible(p.id, disponible);
+    } catch (err) {
+      reemplazar(p);
+      toast.error(err instanceof Error ? err.message : 'No se pudo cambiar la disponibilidad');
+    }
+  }
+
+  async function cambiarActivo(p: PlatoCarta, activo: boolean, conDeshacer = true) {
+    setOcupado(p.id);
+    reemplazar({ ...p, activo });
+    try {
+      await api.admin.toggleActivoPlato(p.id, activo);
+      if (!activo && conDeshacer) {
+        toast((t) => (
+          <span className="flex items-center gap-3 text-sm">
+            «{p.nombre}» retirado de la carta
+            <button
+              type="button"
+              className="font-semibold text-[var(--tinta)] underline underline-offset-2"
+              onClick={() => { toast.dismiss(t.id); cambiarActivo({ ...p, activo: false }, true, false); }}
+            >
+              Deshacer
+            </button>
+          </span>
+        ), { duration: 6000 });
+      } else if (activo) {
+        toast.success(`«${p.nombre}» volvió a la carta`);
+      }
+    } catch (err) {
+      reemplazar(p);
+      toast.error(err instanceof Error ? err.message : 'No se pudo actualizar el plato');
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function cambiarPrecio(p: PlatoCarta, precio: number): Promise<boolean> {
+    try {
+      await api.admin.editarPlato(p.id, { precio: precio.toFixed(2) });
+      reemplazar({ ...p, precio: precio.toFixed(2) });
+      toast.success(`${p.nombre}: S/ ${precio.toFixed(2)}`);
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo cambiar el precio');
+      return false;
+    }
+  }
+
+  async function moverA(p: PlatoCarta, categoriaId: string) {
+    const cat = catPorId.get(categoriaId);
+    try {
+      await api.admin.editarPlato(p.id, { categoriaId });
+      toast.success(`«${p.nombre}» movido a ${cat?.nombre ?? 'otra categoría'}`);
+      cargar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo mover el plato');
+    }
+  }
+
+  const cerrarPanel = useCallback(() => setPanel(null), []);
+  const cerrarCategorias = useCallback(() => setPanelCategorias(false), []);
+
+  function navegar(dir: -1 | 1) {
+    if (panel?.modo !== 'editar') return;
+    const i = ordenVisible.findIndex((p) => p.id === panel.plato.id);
+    const sig = ordenVisible[i + dir];
+    if (sig) setPanel({ modo: 'editar', plato: sig });
+  }
+
+  // ── Render ───────────────────────────────────────────────
+  if (cargando) {
+    return (
+      <div className="mx-auto max-w-[1440px] space-y-4 px-4 py-5 md:px-8 md:py-6" aria-busy>
+        <div className="h-8 w-40 animate-pulse rounded bg-[var(--muted)]" />
+        <div className="h-10 w-full max-w-md animate-pulse rounded bg-[var(--muted)]" />
+        <div className="h-80 w-full animate-pulse rounded-[10px] bg-[var(--muted)]" />
+      </div>
+    );
+  }
+
+  if (error && categorias.length === 0) {
+    return (
+      <div className="mx-auto max-w-[1440px] px-4 py-5 md:px-8 md:py-6">
+        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">Carta</h1>
+        <div role="alert" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--aviso)]/30 bg-[var(--aviso-tint)] px-4 py-3 text-sm text-[#7a3c08]">
+          No se pudo cargar la carta. Revisa que el servidor esté en marcha.
+          <button type="button" onClick={() => cargar()} className={botonCls}><RotateCcw className="size-3.5" aria-hidden /> Reintentar</button>
+        </div>
+      </div>
+    );
+  }
+
+  const vacia = platos.length === 0 && !carga;
 
   return (
-    <>
-      {editando && (
-        <EditModal
-          plato={editando}
-          categorias={categorias}
-          onClose={() => setEditando(null)}
-          onSaved={(updated) => {
-            setPlatos((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-            setEditando(null);
-            fetchPlatos();
-          }}
-        />
-      )}
+    <div className="mx-auto max-w-[1440px] px-4 pt-5 pb-16 md:px-8 md:pt-6">
+      <PlatoPanel
+        panel={panel}
+        categorias={categorias}
+        onClose={cerrarPanel}
+        onNavegar={navegar}
+        onGuardado={(p) => {
+          setPanel(null);
+          if (platos.some((x) => x.id === p.id)) reemplazar(p);
+          cargar();
+        }}
+        onRetirar={(p) => { setPanel(null); cambiarActivo(p, false); }}
+      />
+      <CategoriasPanel
+        open={panelCategorias}
+        categorias={categorias}
+        conteo={conteo}
+        sinVincularPor={sinVincularPor}
+        onClose={cerrarCategorias}
+        onCambio={setCategorias}
+      />
 
-      {bulkModalAbierto && (
-        <BulkModal
-          categorias={categorias}
-          onClose={() => setBulkModalAbierto(false)}
-          onSaved={() => {
-            fetchPlatos();
-          }}
-        />
-      )}
-
-      {categoriasModalAbierto && (
-        <CategoriasModal
-          categorias={categorias}
-          onClose={() => setCategoriasModalAbierto(false)}
-          onRefresh={() => {
-            fetchPlatos();
-          }}
-        />
-      )}
-
-      <div className="p-5 space-y-6 max-w-2xl mx-auto">
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-[var(--carbon)]">Carta</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {platos.length} platos{sinStock > 0 && <span className="text-[var(--terracota)]"> · {sinStock} sin stock</span>}
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap justify-end">
-            <Button
-              onClick={() => setCategoriasModalAbierto(true)}
-              variant="outline"
-              className="border-border text-[var(--carbon)] hover:bg-muted font-semibold"
-            >
-              Categorías ({categorias.length})
-            </Button>
-            <Button
-              onClick={() => setBulkModalAbierto(true)}
-              variant="outline"
-              className="border-border text-[var(--carbon)] hover:bg-muted font-semibold"
-            >
-              Crear en lote
-            </Button>
-            <Button
-              onClick={() => setFormAbierto((v) => !v)}
-              className="bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-semibold"
-            >
-              <Plus size={15} className="mr-1" /> {formAbierto ? 'Cerrar' : 'Nuevo plato'}
-            </Button>
-          </div>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">Carta</h1>
+          <p className="mt-0.5 text-[13px] text-[var(--pizarra)]">
+            {enCarta.length === 0
+              ? `Sin platos todavía · ${plural(categorias.length, 'categoría lista', 'categorías listas')}`
+              : <>
+                  {plural(enCarta.length, 'plato', 'platos')} en {plural(categorias.length, 'categoría', 'categorías')}
+                  {agotados > 0 && <span className="font-medium text-[var(--aviso)]"> · {plural(agotados, 'agotado hoy', 'agotados hoy')}</span>}
+                </>}
+          </p>
         </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setPanelCategorias(true)} className={botonCls}>Categorías</button>
+          <button type="button" onClick={() => setPanel({ modo: 'nuevo', categoriaId: activa ?? undefined })} className={botonPrimarioCls}>
+            <Plus className="size-4" aria-hidden /> Nuevo plato
+          </button>
+        </div>
+      </header>
 
-        {/* Formulario nuevo plato (colapsable) */}
-        {formAbierto && (
-          <div className="rounded-2xl border border-border bg-white p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs text-muted-foreground">Nombre</label>
-                <input
-                  type="text" placeholder="Ej: Lomo saltado" autoFocus
-                  value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Precio (S/)</label>
-                <input
-                  type="number" min="0" step="0.50" placeholder="0.00"
-                  value={form.precio} onChange={(e) => setForm((p) => ({ ...p, precio: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-                />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-xs text-muted-foreground">Categoría</label>
-                <select
-                  value={form.categoriaId}
-                  onChange={(e) => setForm((p) => ({ ...p, categoriaId: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)] bg-white"
-                >
-                  {categorias.map((cat) => (
-                    <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                  ))}
-                </select>
-              </div>
+      {vacia ? (
+        <CartaVacia categorias={categorias} onElegir={(id) => { setCarga({ categoriaId: id }); setTimeout(() => irA(id), 60); }} onCategorias={() => setPanelCategorias(true)} />
+      ) : (
+        <>
+          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+            <div className="relative w-full min-w-0 sm:max-w-[420px] sm:flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--pizarra)]" aria-hidden />
+              <input
+                ref={buscador}
+                type="search"
+                aria-label="Buscar plato"
+                placeholder="Buscar plato o descripción…"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setBusqueda(''); }}
+                className="h-9 w-full rounded-lg border border-[var(--linea)] bg-white pl-9 pr-9 text-sm text-[var(--ink)] outline-none transition-colors placeholder:text-[var(--pizarra)]/70 focus:border-[var(--tinta)] focus:ring-2 focus:ring-[var(--tinta)]/20 [&::-webkit-search-cancel-button]:hidden"
+              />
+              {busqueda ? (
+                <button type="button" aria-label="Borrar búsqueda" onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-[var(--pizarra)] hover:bg-[var(--muted)]">
+                  <X className="size-3.5" />
+                </button>
+              ) : (
+                <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-b-2 border-[var(--linea)] bg-white px-1.5 font-sans text-[11px] font-semibold text-[var(--pizarra)] sm:block">/</kbd>
+              )}
             </div>
-            <Button
-              className="w-full bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-semibold"
-              onClick={handleCrearPlato} disabled={guardando || !form.nombre || !form.precio || !form.categoriaId}
-            >
-              {guardando ? 'Agregando…' : 'Agregar a la carta'}
-            </Button>
+            <div className="max-w-full overflow-x-auto">
+              <Segmentado<FiltroCarta>
+                etiqueta="Mostrar"
+                value={filtro}
+                onChange={setFiltro}
+                opciones={[
+                  { value: 'carta', label: `En carta ${enCarta.length}` },
+                  { value: 'agotados', label: `Agotados hoy ${agotados}` },
+                  { value: 'retirados', label: `Retirados ${retirados}` },
+                ]}
+              />
+            </div>
           </div>
-        )}
 
-        {/* Buscador + filtro por categoría */}
-        <div className="flex items-center gap-2 sticky top-0 z-10 bg-[var(--crema)] pb-2">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar plato…"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-            />
-          </div>
-          <select
-            value={filtroCat}
-            onChange={(e) => setFiltroCat(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
-          >
-            <option value="todas">Todas las categorías</option>
-            {categorias.map((cat) => (
-              <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+          {/* Índice en pastillas: tablet y teléfono */}
+          <nav aria-label="Categorías" className="sticky top-0 z-20 -mx-4 mt-3 flex gap-1.5 overflow-x-auto bg-[var(--piedra)]/95 px-4 py-2 backdrop-blur-sm [scrollbar-width:none] lg:hidden">
+            {secciones.map(({ cat }) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => irA(cat.id)}
+                aria-current={activa === cat.id ? 'true' : undefined}
+                className={[
+                  'shrink-0 rounded-full border px-3 py-1 text-[12.5px] font-medium whitespace-nowrap transition-colors',
+                  activa === cat.id ? 'border-[var(--tinta)] bg-[var(--tinta)] text-white' : 'border-[var(--linea)] bg-white text-[var(--ink)]',
+                ].join(' ')}
+              >
+                {cat.nombre} <span className="tabular-nums opacity-70">{conteo[cat.id] ?? 0}</span>
+              </button>
             ))}
-          </select>
-        </div>
+          </nav>
 
-        {(() => {
-          const q = busqueda.trim().toLowerCase();
-          const platosFiltrados = platos.filter((p) => {
-            if (filtroCat !== 'todas' && p.categoriaId !== filtroCat && p.categoria?.id !== filtroCat) return false;
-            if (q && !p.nombre.toLowerCase().includes(q)) return false;
-            return true;
-          });
-          if (platosFiltrados.length === 0) {
-            return (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Ningún plato coincide con la búsqueda.
-              </p>
-            );
-          }
-          return categorias.map((cat) => {
-            const items = platosFiltrados.filter((p) => p.categoriaId === cat.id || p.categoria?.id === cat.id);
-            if (!items.length) return null;
-            return (
-              <section key={cat.id}>
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">{cat.nombre}</h3>
-                <div className="rounded-2xl border border-border bg-white overflow-hidden divide-y divide-border">
-                  {items.map((p) => <PlatoRow key={p.id} plato={p} />)}
-                </div>
-              </section>
-            );
-          });
-        })()}
+          <div className="mt-3 grid gap-7 lg:mt-6 lg:grid-cols-[208px_minmax(0,1fr)]">
+            <nav aria-label="Categorías" className="sticky top-6 hidden self-start lg:block">
+              <h2 className="px-2.5 pb-2 text-[11px] font-semibold tracking-[0.07em] text-[var(--pizarra)] uppercase">Categorías</h2>
+              <ul className="space-y-px text-[13.5px]">
+                {categorias.map((c) => {
+                  const n = conteo[c.id] ?? 0;
+                  const on = activa === c.id;
+                  const enVista = secciones.some((s) => s.cat.id === c.id);
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => irA(c.id)}
+                        disabled={!enVista}
+                        aria-current={on ? 'true' : undefined}
+                        className={[
+                          'flex w-full items-center justify-between gap-2 rounded-[7px] px-2.5 py-1.5 text-left transition-colors disabled:opacity-40',
+                          on ? 'bg-white font-semibold text-[var(--ink)] shadow-[0_0_0_1px_var(--linea)]' : 'hover:bg-white/60',
+                          n === 0 && !on ? 'text-[var(--pizarra)]' : 'text-[var(--ink)]',
+                        ].join(' ')}
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          {sinVincularPor[c.id] ? <span className="size-[7px] shrink-0 rounded-full bg-[var(--aviso)]" title={`${sinVincularPor[c.id]} sin vincular a un insumo`} /> : null}
+                          <span className="truncate">{c.nombre}</span>
+                        </span>
+                        <span className="text-[12.5px] font-normal tabular-nums text-[var(--pizarra)]">{n}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button type="button" onClick={() => setPanelCategorias(true)} className="mt-2.5 px-2.5 text-[13px] font-medium text-[var(--tinta)] hover:underline">
+                Ordenar y editar…
+              </button>
+            </nav>
+
+            <div className="min-w-0">
+              {secciones.every((s) => s.items.length === 0) && !mostrarVacias ? (
+                <SinResultados
+                  busqueda={busqueda.trim()}
+                  filtro={filtro}
+                  onCrear={() => setPanel({ modo: 'nuevo', nombre: busqueda.trim(), categoriaId: activa ?? undefined })}
+                  onLimpiar={() => { setBusqueda(''); setFiltro('carta'); }}
+                />
+              ) : secciones.map(({ cat, items }) => {
+                const abierta = carga?.categoriaId === cat.id;
+                return (
+                  <section key={cat.id} id={`cat-${cat.id}`} data-categoria={cat.id} className="mb-7 scroll-mt-16 lg:scroll-mt-6" aria-labelledby={`h-${cat.id}`}>
+                    <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <h2 id={`h-${cat.id}`} className="text-[15px] font-semibold text-[var(--ink)]">{cat.nombre}</h2>
+                      <span className="text-[13px] text-[var(--pizarra)] tabular-nums">{items.length === 0 ? 'Sin platos todavía' : plural(items.length, 'plato', 'platos')}</span>
+                      <Etiqueta icono={<ChefHat className="size-3" strokeWidth={1.9} />}>{cat.esParaCocina ? 'Va a cocina' : 'No va a cocina'}</Etiqueta>
+                      {cat.descuentaStock && <Etiqueta icono={<Package className="size-3" strokeWidth={1.9} />}>Descuenta stock</Etiqueta>}
+                      {filtro !== 'retirados' && !abierta && (
+                        <button type="button" onClick={() => setCarga({ categoriaId: cat.id })} className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[13px] font-medium text-[var(--tinta)] hover:bg-[var(--tinta-tint)]">
+                          <Plus className="size-3.5" aria-hidden /> Agregar platos
+                        </button>
+                      )}
+                    </div>
+
+                    <div className={['overflow-visible rounded-[10px] border bg-white', abierta ? 'border-[var(--tinta)]' : 'border-[var(--linea)]'].join(' ')}>
+                      {items.length > 0 && (
+                        <div className={`hidden gap-3 rounded-t-[10px] border-b border-[#EFEDE8] bg-[#FAF9F6] px-3.5 py-1.5 text-[11.5px] font-semibold text-[var(--pizarra)] md:grid ${columnasFila}`}>
+                          <span>Plato</span><span className="text-right">Precio</span><span>{cat.descuentaStock ? 'Stock' : ''}</span><span>{filtro === 'retirados' ? '' : 'Disponible hoy'}</span><span />
+                        </div>
+                      )}
+                      {items.map((p) => (
+                        <FilaPlato
+                          key={p.id}
+                          plato={p}
+                          categoria={cat}
+                          categorias={categorias}
+                          ocupado={ocupado === p.id}
+                          onEditar={() => setPanel({ modo: 'editar', plato: p })}
+                          onDuplicar={() => setPanel({ modo: 'nuevo', base: p, categoriaId: cat.id })}
+                          onMover={(id) => moverA(p, id)}
+                          onDisponible={(v) => cambiarDisponible(p, v)}
+                          onActivo={(v) => cambiarActivo(p, v)}
+                          onPrecio={(n) => cambiarPrecio(p, n)}
+                        />
+                      ))}
+                      {abierta ? (
+                        <CargaRapida
+                          categoria={cat}
+                          nombreInicial={carga?.nombre}
+                          onCerrar={() => setCarga(null)}
+                          onGuardado={() => { setCarga(null); cargar(); }}
+                        />
+                      ) : filtro !== 'retirados' && (
+                        <button
+                          type="button"
+                          onClick={() => setCarga({ categoriaId: cat.id })}
+                          className={[
+                            'flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-medium text-[var(--tinta)] transition-colors hover:bg-[var(--tinta-tint)]/60',
+                            items.length ? 'rounded-b-[10px] border-t border-dashed border-[var(--linea)] bg-[#FDFCFA]' : 'rounded-[10px]',
+                          ].join(' ')}
+                        >
+                          <Plus className="size-3.5" aria-hidden />
+                          {items.length ? `Agregar platos a ${cat.nombre}` : `Cargar los primeros platos de ${cat.nombre}`}
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Etiqueta({ icono, children }: { icono: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-[var(--linea)] bg-[#FAF9F6] px-1.5 py-px text-xs text-[var(--pizarra)]">
+      {icono}{children}
+    </span>
+  );
+}
+
+function SinResultados({ busqueda, filtro, onCrear, onLimpiar }: {
+  busqueda: string; filtro: FiltroCarta; onCrear: () => void; onLimpiar: () => void;
+}) {
+  const texto = busqueda
+    ? `Ningún plato se llama «${busqueda}»${filtro === 'agotados' ? ' entre los agotados' : filtro === 'retirados' ? ' entre los retirados' : ''}.`
+    : filtro === 'agotados' ? 'No hay platos agotados hoy. Todo lo de la carta se puede pedir.'
+    : 'No hay platos retirados de la carta.';
+  return (
+    <div className="rounded-[10px] border border-dashed border-[var(--linea)] px-6 py-10 text-center">
+      <p className="text-sm text-[var(--ink)]">{texto}</p>
+      <div className="mt-3 flex justify-center gap-2">
+        {busqueda && filtro !== 'retirados' && (
+          <button type="button" onClick={onCrear} className={botonPrimarioCls}><Plus className="size-3.5" aria-hidden /> Crear «{busqueda}»</button>
+        )}
+        <button type="button" onClick={onLimpiar} className={botonCls}>Ver toda la carta</button>
       </div>
-    </>
+    </div>
+  );
+}
+
+function CartaVacia({ categorias, onElegir, onCategorias }: {
+  categorias: CategoriaCarta[];
+  onElegir: (id: string) => void;
+  onCategorias: () => void;
+}) {
+  return (
+    <section className="mt-6 grid gap-8 rounded-[10px] border border-[var(--linea)] bg-white p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:p-8">
+      <div>
+        <h2 className="text-[19px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Carga la carta por categorías</h2>
+        <p className="mt-1.5 max-w-[52ch] text-sm text-[var(--pizarra)]">
+          El mesero solo puede pedir lo que esté aquí. Elige una categoría y escribe nombre y precio de cada plato; también puedes pegar una lista entera.
+        </p>
+        <ol className="mt-5 space-y-2.5 text-[13.5px] text-[var(--ink)]">
+          <Paso n={1}>Empieza por lo que más vendes. Lo demás se completa después.</Paso>
+          <Paso n={2}>Para bebidas embotelladas, crea primero el insumo en <a href="/admin/stock" className="font-medium text-[var(--tinta)] underline underline-offset-2">Stock</a> y luego vincúlalo en cada plato.</Paso>
+          <Paso n={3}>Revisa en <button type="button" onClick={onCategorias} className="font-medium text-[var(--tinta)] underline underline-offset-2">Categorías</button> cuáles van a cocina y en qué orden las ve el mesero.</Paso>
+        </ol>
+      </div>
+      <div>
+        <h3 className="mb-2 text-xs font-semibold text-[var(--pizarra)]">Elige por dónde empezar</h3>
+        {categorias.length === 0 ? (
+          <button type="button" onClick={onCategorias} className={botonPrimarioCls}><Plus className="size-3.5" aria-hidden /> Crear la primera categoría</button>
+        ) : (
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
+            {categorias.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onElegir(c.id)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--linea)] px-3 py-2.5 text-left text-[13.5px] font-medium text-[var(--ink)] transition-colors hover:border-[var(--tinta)] hover:bg-[var(--tinta-tint)]/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tinta)]"
+                >
+                  <span className="min-w-0 truncate">{c.nombre}</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-[var(--tinta)]"><Plus className="size-3.5" aria-hidden />Agregar</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Paso({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="grid grid-cols-[22px_minmax(0,1fr)] gap-2.5">
+      <span className="grid size-[22px] place-items-center rounded-md bg-[var(--tinta-tint)] text-[11.5px] font-semibold text-[var(--tinta)]">{n}</span>
+      <span>{children}</span>
+    </li>
   );
 }
