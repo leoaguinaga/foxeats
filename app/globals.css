@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-heading: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,46 +49,61 @@
 }
 
 :root {
-  /* Mister Luka brand palette */
-  --terracota: #B5402E;
-  --carbon: #2B211C;
-  --crema: #FBF3E7;
-  --salvia: #8A9A5B;
-  --dorado: #D9A441;
-  --gris-calido: #6B6058;
+  /* Paleta FoxEats: Tinta y ají */
+  --tinta: #1F2A4D;          /* marca, acción principal, selección */
+  --tinta-hover: #2A3864;
+  --tinta-tint: #E9EBF2;
+  --aji: #F2B033;            /* acento puntual: marca y lo que está pasando ahora */
+  --aji-tint: #FDF1D6;
+  --ink: #161922;            /* texto */
+  --pizarra: #5D6170;        /* texto secundario */
+  --piedra: #F4F3EF;         /* fondo de la app */
+  --linea: #DCDAD3;
 
-  --background: var(--crema);
-  --foreground: var(--carbon);
+  /* Estados de operación (no usar la marca para esto) */
+  --ok: #25835A;             /* libre, pagado, entregado */
+  --ok-hover: #1E6D4B;
+  --ok-tint: #E3F1EA;
+  --ok-tint-strong: #CDE6D9;
+  --aviso: #B0560C;          /* en cocina, por cobrar */
+  --aviso-tint: #FBEBDD;
+  --alerta: #C2362B;         /* ocupada, alerta, error, faltante */
+  --alerta-hover: #A42C23;
+  --alerta-tint: #FBEDEB;
+  --alerta-tint-strong: #F5D6D2;
+
+  --background: var(--piedra);
+  --foreground: var(--ink);
   --card: #FFFFFF;
-  --card-foreground: var(--carbon);
+  --card-foreground: var(--ink);
   --popover: #FFFFFF;
-  --popover-foreground: var(--carbon);
-  --primary: var(--terracota);
+  --popover-foreground: var(--ink);
+  --primary: var(--tinta);
   --primary-foreground: #FFFFFF;
-  --secondary: #F0E6D6;
-  --secondary-foreground: var(--carbon);
-  --muted: #F0E6D6;
-  --muted-foreground: var(--gris-calido);
-  --accent: #F0E6D6;
-  --accent-foreground: var(--carbon);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: #E0D5C5;
-  --input: #E0D5C5;
-  --ring: var(--terracota);
-  --chart-1: var(--terracota);
-  --chart-2: var(--salvia);
-  --chart-3: var(--dorado);
-  --chart-4: var(--gris-calido);
-  --chart-5: var(--carbon);
+  --secondary: var(--tinta-tint);
+  --secondary-foreground: var(--tinta);
+  --muted: #ECEBE6;
+  --muted-foreground: var(--pizarra);
+  --accent: var(--tinta-tint);
+  --accent-foreground: var(--tinta);
+  --destructive: var(--alerta);
+  --border: var(--linea);
+  --input: var(--linea);
+  --ring: var(--tinta);
+  --chart-1: var(--tinta);
+  --chart-2: var(--aji);
+  --chart-3: var(--ok);
+  --chart-4: var(--aviso);
+  --chart-5: var(--pizarra);
   --radius: 0.625rem;
-  --sidebar: var(--crema);
-  --sidebar-foreground: var(--carbon);
-  --sidebar-primary: var(--terracota);
+  --sidebar: var(--piedra);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--tinta);
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F0E6D6;
-  --sidebar-accent-foreground: var(--carbon);
-  --sidebar-border: #E0D5C5;
-  --sidebar-ring: var(--terracota);
+  --sidebar-accent: var(--tinta-tint);
+  --sidebar-accent-foreground: var(--tinta);
+  --sidebar-border: var(--linea);
+  --sidebar-ring: var(--tinta);
 }
 
 .dark {

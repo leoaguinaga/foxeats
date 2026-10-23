@@ -1,20 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
+import "@fontsource-variable/inter";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Mister Luka",
+  title: process.env.NEXT_PUBLIC_STORE_NAME || "FoxEats",
   description: "Sistema operativo del restaurante",
 };
 
@@ -26,16 +16,16 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">
         {children}
         <Toaster
           position="top-center"
           toastOptions={{
-            style: { background: '#2B211C', color: '#FBF3E7', borderRadius: '10px' },
-            success: { iconTheme: { primary: '#D9A441', secondary: '#2B211C' } },
-            error:   { iconTheme: { primary: '#B5402E', secondary: '#FBF3E7' } },
+            style: { background: '#161922', color: '#FFFFFF', borderRadius: '10px' },
+            success: { iconTheme: { primary: '#25835A', secondary: '#FFFFFF' } },
+            error:   { iconTheme: { primary: '#C2362B', secondary: '#FFFFFF' } },
           }}
         />
       </body>

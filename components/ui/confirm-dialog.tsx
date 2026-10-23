@@ -39,8 +39,8 @@ export function ConfirmDialog({
 
   const confirmClass =
     variant === 'destructive'
-      ? 'bg-[var(--terracota)] hover:bg-[#9e3726] text-white'
-      : 'bg-[var(--carbon)] hover:bg-[#2a2a2a] text-white';
+      ? 'bg-[var(--alerta)] hover:bg-[var(--alerta-hover)] text-white'
+      : 'bg-[var(--ink)] hover:bg-[var(--ink)]/90 text-white';
 
   return (
     <div
@@ -52,7 +52,7 @@ export function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="space-y-2">
-          <h2 className="font-bold text-[var(--carbon)] text-lg">{title}</h2>
+          <h2 className="font-bold text-[var(--ink)] text-lg">{title}</h2>
           {description && (
             <p className="text-sm text-muted-foreground">{description}</p>
           )}
