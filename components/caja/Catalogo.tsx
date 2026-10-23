@@ -3,19 +3,30 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { Search, X } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { CategoriaCarta, PlatoCarta } from '@/lib/types';
+import type { CategoriaCarta, PlatoCarta, PromocionVigente } from '@/lib/types';
+import { etiquetaDescuento, precioConPromo } from '@/lib/promociones';
 import { soles } from '@/components/admin/caja/fechas';
 
 export const campoCaja =
   'h-10 w-full rounded-lg border border-[var(--linea)] bg-white px-3 text-[14px] text-[var(--ink)] caret-[var(--tinta)] outline-none placeholder:text-[#8A8D98] focus:border-[var(--tinta)] focus:shadow-[0_0_0_3px_var(--tinta-tint)]';
 
-/** Buscador, categorías de la carta y tarjetas de producto; lo comparten el pedido nuevo y el cobro. */
-export function Catalogo({ productos, cantidades, onAgregar, buscarRef, rejilla = 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' }: {
+/** Desde cuántas unidades se avisa «quedan N». */
+export const AVISO_QUEDAN = 5;
+
+/**
+ * Buscador, categorías de la carta y tarjetas de producto; lo comparten el pedido
+ * nuevo y el cobro de caja, y el pedido de mesa del mesero.
+ */
+export function Catalogo({ productos, cantidades, onAgregar, buscarRef, rejilla = 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4', promos, cargarMasPedidos = api.caja.masPedidos }: {
   productos: PlatoCarta[];
   cantidades: Map<string, number>;
   onAgregar: (p: PlatoCarta) => void;
   buscarRef?: RefObject<HTMLInputElement | null>;
   rejilla?: string;
+  /** Promo vigente por plato: muestra el precio normal tachado, el final y la etiqueta. */
+  promos?: Map<string, PromocionVigente>;
+  /** De dónde sale «Más pedidos»: la caja mira el mostrador; el mesero, el salón. */
+  cargarMasPedidos?: () => Promise<string[]>;
 }) {
   const [categorias, setCategorias] = useState<CategoriaCarta[]>([]);
   const [masPedidos, setMasPedidos] = useState<string[]>([]);
@@ -25,8 +36,8 @@ export function Catalogo({ productos, cantidades, onAgregar, buscarRef, rejilla 
 
   useEffect(() => {
     api.categorias.list().then(setCategorias).catch(() => {});
-    api.caja.masPedidos().then(setMasPedidos).catch(() => {});
-  }, []);
+    cargarMasPedidos().then(setMasPedidos).catch(() => {});
+  }, [cargarMasPedidos]);
 
   const visibles = useMemo(() => productos.filter((p) => p.activo), [productos]);
 
@@ -97,27 +108,42 @@ export function Catalogo({ productos, cantidades, onAgregar, buscarRef, rejilla 
         <ul className={`grid gap-2 pt-1 ${rejilla}`}>
           {lista.map((p) => {
             const n = cantidades.get(p.id) ?? 0;
+            const agotado = !p.disponible || (p.quedan !== null && p.quedan <= 0);
+            const promo = promos?.get(p.id);
             return (
               <li key={p.id}>
                 <button
                   type="button"
-                  disabled={!p.disponible}
+                  disabled={agotado}
                   onClick={() => onAgregar(p)}
                   className={[
                     'relative flex min-h-[68px] w-full flex-col justify-between gap-1.5 rounded-[10px] border bg-white px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tinta)]',
-                    !p.disponible
+                    agotado
                       ? 'cursor-not-allowed border-[var(--linea)] bg-[#FBFAF7]'
                       : n > 0
                         ? 'border-[var(--tinta)] shadow-[inset_0_0_0_1px_var(--tinta)]'
                         : 'border-[var(--linea)] hover:border-[#C9CBD6] hover:shadow-[0_2px_6px_-2px_rgba(22,25,34,0.12)]',
                   ].join(' ')}
                 >
-                  <span className={['line-clamp-2 text-[13.5px] leading-snug font-semibold', p.disponible ? 'text-[var(--ink)]' : 'text-[#8A8D98]'].join(' ')}>
+                  <span className={['line-clamp-2 text-[13.5px] leading-snug font-semibold', agotado ? 'text-[#8A8D98]' : 'text-[var(--ink)]'].join(' ')}>
                     {p.nombre}
                   </span>
-                  {p.disponible
-                    ? <span className="text-[13px] text-[var(--pizarra)] tabular-nums">S/ {soles(p.precio)}</span>
-                    : <span className="text-[12px] font-semibold text-[var(--aviso)]">Agotado</span>}
+                  {agotado
+                    ? <span className="text-[12px] font-semibold text-[var(--aviso)]">Agotado</span>
+                    : (
+                      <span className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] text-[var(--pizarra)] tabular-nums">
+                        {promo ? (
+                          <>
+                            <s className="text-[12px]">S/ {soles(p.precio)}</s>
+                            <span className="font-semibold text-[var(--ink)]">S/ {soles(precioConPromo(parseFloat(p.precio), promo))}</span>
+                            <span title={promo.nombre} className="rounded bg-[var(--aji)] px-1 text-[10.5px] leading-4 font-bold text-[var(--ink)]">{etiquetaDescuento(promo)}</span>
+                          </>
+                        ) : <>S/ {soles(p.precio)}</>}
+                        {p.quedan !== null && p.quedan <= AVISO_QUEDAN && (
+                          <span className="font-semibold text-[var(--aviso)]">· {p.quedan === 1 ? 'queda 1' : `quedan ${p.quedan}`}</span>
+                        )}
+                      </span>
+                    )}
                   {n > 0 && (
                     <span className="absolute -top-2 -right-2 grid h-6 min-w-6 place-items-center rounded-full bg-[var(--aji)] px-1.5 text-[12.5px] font-bold text-[var(--ink)] shadow-[0_2px_4px_rgba(22,25,34,0.2)] tabular-nums">
                       {n}

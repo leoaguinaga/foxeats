@@ -53,6 +53,8 @@ export const api = {
   },
   menu: {
     list: () => apiFetch<import('./types').PlatoCarta[]>('/menu'),
+    /** Lo más vendido en salón (30 días), para «Más pedidos» del mesero. */
+    masPedidosSalon: () => apiFetch<string[]>('/menu/mas-pedidos?tipo=mesa'),
     toggleDisponible: (platoId: string, disponible: boolean) =>
       apiFetch(`/platos/${platoId}`, {
         method: 'PATCH',
@@ -106,11 +108,6 @@ export const api = {
       apiFetch(`/visits/${visitaId}/close`, { method: 'POST' }),
     imprimirCuenta: (visitaId: string) =>
       apiFetch<{ ok: boolean }>(`/visits/${visitaId}/print-bill`, { method: 'POST' }),
-    pagarMesero: (visitaId: string, pagos: Array<{ metodoPago: string; monto: number }>) =>
-      apiFetch<{ ok: boolean }>(`/visits/${visitaId}/pay-waiter`, {
-        method: 'POST',
-        body: JSON.stringify({ pagos }),
-      }),
     abrirParaLlevar: (data?: { nombreCliente?: string }) =>
       apiFetch<{ id: string }>('/visits/llevar', {
         method: 'POST',
@@ -415,11 +412,20 @@ function queryCaja(f: { desde?: string; hasta?: string; cajero?: string }) {
 export interface MonitorItem {
   pedidoId: string;
   visitaId: string;
-  mesaNumero: number;
-  estado: string;
+  /** null en para llevar y delivery. */
+  mesaNumero: number | null;
+  /** «Mesa 6» o «Barra 1»; null en para llevar y delivery. */
+  mesaEtiqueta: string | null;
+  tipoVisita: 'mesa' | 'llevar' | 'delivery';
+  nombreCliente: string | null;
+  abiertaPor: { id: string; nombre: string };
+  /** Número de la ronda dentro de su visita (1, 2, 3…). */
+  numeroRonda: number;
+  estado: 'pendiente' | 'en_preparacion' | 'listo';
   fechaCreacion: string;
+  fechaListo: string | null;
   minutosEspera: number;
-  items: Array<{ platoCartaId: string; cantidad: number; notas: string | null }>;
+  items: Array<{ platoCartaId: string; nombre: string; cantidad: number; notas: string | null }>;
 }
 
 export type ModoTicketera = 'simulada' | 'red';

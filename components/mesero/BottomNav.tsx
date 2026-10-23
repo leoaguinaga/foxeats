@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutGrid, BookOpen, Bell } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/auth-client';
 
 const TABS = [
   { href: '/mesero',         label: 'Mesas',   Icon: LayoutGrid },
@@ -12,16 +13,24 @@ const TABS = [
   { href: '/mesero/monitor', label: 'Monitor', Icon: Bell       },
 ];
 
-/** Rondas listas para servir, para que Monitor avise sin tener que abrirlo. */
+/**
+ * Rondas listas de tus mesas, para que Monitor avise sin tener que abrirlo.
+ * Cuenta lo mismo que la vista por defecto del monitor («Mis mesas»).
+ */
 function useListos() {
+  const { data } = useSession();
+  const yo = data?.user?.id;
   const [listos, setListos] = useState(0);
   useEffect(() => {
+    if (!yo) return;
     const leer = () =>
-      api.monitor.get().then((r) => setListos(r.filter((x) => x.estado === 'listo').length)).catch(() => {});
+      api.monitor.get()
+        .then((r) => setListos(r.filter((x) => x.estado === 'listo' && x.abiertaPor.id === yo).length))
+        .catch(() => {});
     leer();
     const id = setInterval(leer, 10000);
     return () => clearInterval(id);
-  }, []);
+  }, [yo]);
   return listos;
 }
 

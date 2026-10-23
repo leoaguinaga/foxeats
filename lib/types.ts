@@ -171,6 +171,9 @@ export interface Visita {
   costoEnvio: string | null;
   fechaApertura: string;
   fechaCierre: string | null;
+  /** Mesa de la visita (null en para llevar y delivery). */
+  mesa: { numero: number; etiqueta: string; zona: string | null } | null;
+  abiertaPor: { id: string; nombre: string } | null;
   pedidos: Pedido[];
   total: string;
 }

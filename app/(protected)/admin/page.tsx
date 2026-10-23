@@ -70,12 +70,12 @@ export default function AdminInicio() {
   }, [fetchDatos]);
 
   // ── Derivados ─────────────────────────────────────────────
-  const rondas = monitor
-    .filter((r) => r.estado !== 'entregado' && r.estado !== 'cancelado')
+  const rondas = [...monitor]
     .sort((a, b) => b.minutosEspera - a.minutosEspera);
   const demoradas = rondas.filter((r) => r.minutosEspera >= MINUTOS_ALERTA);
   const demoraPorMesa = new Map<number, number>();
   for (const r of demoradas) {
+    if (r.mesaNumero === null) continue;
     demoraPorMesa.set(r.mesaNumero, Math.max(demoraPorMesa.get(r.mesaNumero) ?? 0, r.minutosEspera));
   }
 
