@@ -1,33 +1,58 @@
 'use client';
 
-import { signOut, useSession } from '@/lib/auth-client';
+import Link from 'next/link';
+import { signOut, useSession, type Rol } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { ArrowLeft, LogOut } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 
 export default function CajaLayout({ children }: { children: React.ReactNode }) {
   const { data } = useSession();
   const router = useRouter();
+  const esAdmin = (data?.user as { role?: Rol } | undefined)?.role === 'administracion';
+  const [nombre, setNombre] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    api.admin.brand().then((b) => { if (active) setNombre(b.nombre); }).catch(() => { });
+    return () => { active = false; };
+  }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--crema)]">
-      <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-3 bg-[var(--carbon)] text-white shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--dorado)] text-sm font-bold select-none text-[var(--carbon)]">
-            ML
-          </div>
-          <span className="font-semibold tracking-wide">Caja · Mister Luka</span>
+    <div className="min-h-screen flex flex-col bg-[var(--piedra)]">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-[var(--tinta)] px-4 py-2.5 text-white md:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <img src="/brand/foxeats/icono-fondo-terracota.png" className="size-8 shrink-0 rounded-lg" alt="" />
+          <span className="truncate font-semibold">Caja{nombre && ` · ${nombre}`}</span>
+          {esAdmin && (
+            <span className="hidden shrink-0 rounded-full bg-[var(--aji)] px-2 py-px text-[11px] font-semibold text-[var(--ink)] sm:inline">
+              Vista de cajero
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-white/70">{data?.user?.name}</span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-white/30 text-white hover:bg-white/10 hover:text-white"
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden text-sm text-white/70 md:inline">{data?.user?.name}</span>
+          {esAdmin && (
+            <Link
+              href="/admin"
+              aria-label="Volver a administración"
+              className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-[13px] font-semibold text-[var(--tinta)] transition-colors hover:bg-[var(--aji-tint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--aji)]"
+            >
+              <ArrowLeft className="size-3.5" aria-hidden />
+              <span className="sm:hidden">Admin</span>
+              <span className="hidden sm:inline">Volver a administración</span>
+            </Link>
+          )}
+          <button
+            type="button"
             onClick={async () => { await signOut(); router.push('/login'); }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/25 px-2.5 py-1.5 text-[13px] text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[var(--aji)]"
           >
-            Salir
-          </Button>
+            <LogOut className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">Salir</span>
+            <span className="sr-only sm:hidden">Cerrar sesión</span>
+          </button>
         </div>
       </header>
 
@@ -36,9 +61,9 @@ export default function CajaLayout({ children }: { children: React.ReactNode }) 
       <Toaster
         position="top-center"
         toastOptions={{
-          style: { background: '#2B211C', color: '#FBF3E7', borderRadius: '10px' },
-          success: { iconTheme: { primary: '#D9A441', secondary: '#2B211C' } },
-          error:   { iconTheme: { primary: '#B5402E', secondary: '#FBF3E7' } },
+          style: { background: '#161922', color: '#FFFFFF', borderRadius: '10px' },
+          success: { iconTheme: { primary: '#25835A', secondary: '#FFFFFF' } },
+          error:   { iconTheme: { primary: '#C2362B', secondary: '#FFFFFF' } },
         }}
       />
     </div>
