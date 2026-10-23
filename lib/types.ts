@@ -18,6 +18,32 @@ export interface Mesa {
   capacidad: number | null;
   filaPosicion: number | null;
   colPosicion: number | null;
+  zonaId: string | null;
+  ancho: number;
+  tipo: TipoMesa;
+}
+
+export type TipoMesa = 'mesa' | 'barra';
+
+export type ModoZona = 'plano' | 'numeros';
+
+export interface ReferenciaPlano {
+  id: string;
+  etiqueta: string;
+  fila: number;
+  col: number;
+  ancho: number;
+  alto: number;
+}
+
+export interface Zona {
+  id: string;
+  nombre: string;
+  orden: number;
+  modo: ModoZona;
+  filas: number;
+  columnas: number;
+  referencias: ReferenciaPlano[];
 }
 
 export interface PlatoCarta {
@@ -31,6 +57,18 @@ export interface PlatoCarta {
   descripcion: string | null;
   stockActual: number | null;
   nombreUnidadMinima: string | null;
+  /** Cuántos de este plato alcanzan con el stock del insumo (null = sin receta). */
+  quedan: number | null;
+  stockMinimo: number | null;
+  insumoId: string | null;
+  cantidadConsumida: number | null;
+}
+
+export interface RecetaPlato {
+  id: string;
+  platoCartaId: string;
+  insumoId: string;
+  cantidadConsumida: number;
 }
 
 export interface ItemPedido {
@@ -62,6 +100,16 @@ export interface Promocion {
   platoCartaIds: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** Promo que rige ahora, tal como la ve el salón (GET /promociones/vigentes). */
+export interface PromocionVigente {
+  id: string;
+  nombre: string;
+  tipoDescuento: TipoDescuento;
+  valorDescuento: string;
+  horaFin: string | null;
+  platoCartaIds: string[];
 }
 
 export interface UpsertPromocion {
