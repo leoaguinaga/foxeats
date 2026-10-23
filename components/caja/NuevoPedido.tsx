@@ -37,7 +37,8 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
   const [error, setError] = useState<string | null>(null);
 
   const buscarRef = useRef<HTMLInputElement>(null);
-  const ticketRef = useRef<HTMLElement>(null);
+  // Bajo 1024 px el ticket es una hoja que sube desde abajo; en escritorio es una columna fija.
+  const [ticketAbierto, setTicketAbierto] = useState(false);
 
   const actuales = lineas[tipo];
   const cantidades = new Map(actuales.map((l) => [l.plato.id, l.cantidad]));
@@ -114,6 +115,7 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
 
       if (!cobrar) toast.success(`Pedido de ${nombreFinal} enviado a cocina`);
       limpiar();
+      setTicketAbierto(false);
       onCreado(cuenta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar el pedido. Intenta de nuevo.');
@@ -128,10 +130,12 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) { e.preventDefault(); buscarRef.current?.focus(); }
+      // Con la hoja abierta, Esc la baja en vez de volver a «Por cobrar».
+      if (e.key === 'Escape' && ticketAbierto) { e.stopImmediatePropagation(); setTicketAbierto(false); }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [activo]);
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [activo, ticketAbierto]);
 
   return (
     <div hidden={!activo} className="flex min-h-0 flex-1 flex-col">
@@ -171,14 +175,30 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Catálogo */}
-        <section aria-label="Catálogo" className="min-h-0 px-4 py-4 md:px-6 lg:overflow-y-auto">
+        <section aria-label="Catálogo" className={['min-h-0 px-4 pt-4 md:px-6 lg:overflow-y-auto lg:pb-4', unidades > 0 ? 'pb-24' : 'pb-4'].join(' ')}>
           <Catalogo productos={productos} cantidades={cantidades} onAgregar={agregar} buscarRef={buscarRef} />
         </section>
 
         {/* Ticket */}
-        <section ref={ticketRef} aria-label="Pedido" className="flex min-h-0 flex-col border-t border-[var(--linea)] bg-white lg:border-t-0 lg:border-l">
+        {ticketAbierto && (
+          <button type="button" aria-label="Bajar el pedido" onClick={() => setTicketAbierto(false)} className="fixed inset-0 z-30 bg-[var(--ink)]/35 animate-in fade-in duration-150 lg:hidden" />
+        )}
+        <section
+          aria-label="Pedido"
+          className={[
+            'flex min-h-0 flex-col bg-white',
+            'lg:static lg:z-auto lg:max-h-none lg:translate-y-0 lg:rounded-none lg:border-l lg:border-[var(--linea)] lg:shadow-none',
+            'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[88dvh] max-lg:rounded-t-[14px] max-lg:shadow-[0_-18px_40px_-20px_rgba(22,25,34,0.45)] max-lg:transition-[transform,visibility] max-lg:duration-300 max-lg:ease-[cubic-bezier(0.22,1,0.36,1)]',
+            ticketAbierto ? 'max-lg:translate-y-0' : 'max-lg:invisible max-lg:translate-y-full',
+          ].join(' ')}
+        >
           <div className="space-y-2.5 border-b border-[var(--linea)] px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-[var(--ink)]">{tipo === 'llevar' ? 'Pedido para llevar' : 'Pedido delivery'}</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-[15px] font-semibold text-[var(--ink)]">{tipo === 'llevar' ? 'Pedido para llevar' : 'Pedido delivery'}</h2>
+              <button type="button" onClick={() => setTicketAbierto(false)} className="-mr-1 rounded-md px-2 py-1 text-[13px] font-semibold text-[var(--tinta)] hover:bg-[var(--tinta-tint)] lg:hidden">
+                Seguir agregando
+              </button>
+            </div>
             {tipo === 'delivery' && (
               <input value={telefono} onChange={(e) => setTelefono(e.target.value)} inputMode="tel" autoComplete="off" placeholder="Teléfono (opcional)" aria-label="Teléfono" className={campo} />
             )}
@@ -298,12 +318,12 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
         </section>
       </div>
 
-      {/* En pantallas angostas el ticket queda abajo: esta barra lo trae a la vista. */}
-      {unidades > 0 && (
+      {/* Bajo 1024 px esta barra sube la hoja del pedido. */}
+      {unidades > 0 && !ticketAbierto && (
         <button
           type="button"
-          onClick={() => ticketRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          className="sticky bottom-3 mx-4 mb-3 flex items-center justify-between rounded-[10px] bg-[var(--tinta)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(22,25,34,0.5)] lg:hidden"
+          onClick={() => setTicketAbierto(true)}
+          className="fixed inset-x-4 bottom-4 z-20 flex items-center justify-between rounded-[10px] bg-[var(--tinta)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(22,25,34,0.5)] lg:hidden"
         >
           <span className="font-medium text-white/75">{unidades} {unidades === 1 ? 'producto' : 'productos'}</span>
           <span className="tabular-nums">Ver pedido · S/ {soles(total)}</span>
