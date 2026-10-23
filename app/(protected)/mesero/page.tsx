@@ -4,14 +4,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { Mesa } from '@/lib/types';
+import { Mesa, Zona } from '@/lib/types';
 import { MesaCard } from '@/components/mesero/MesaCard';
+import { etiquetaCorta, etiquetaMesa } from '@/lib/mesas';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 
 export default function MeseroHome() {
   const router = useRouter();
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  const [zonas, setZonas] = useState<Zona[]>([]);
+  const [zonaActiva, setZonaActiva] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [abriendo, setAbriendo] = useState<string | null>(null);
   const [abriendoLlevar, setAbriendoLlevar] = useState(false);
@@ -32,9 +35,10 @@ export default function MeseroHome() {
 
   const fetchMesas = useCallback(async () => {
     try {
-      const data = await api.mesas.list();
+      const [data, zs] = await Promise.all([api.mesas.list(), api.zonas.list()]);
       // Excluir la mesa virtual 0 (para llevar) de la vista de mesas
       setMesas(data.filter((m) => m.numero !== 0));
+      setZonas(zs);
     } catch {
       // silencioso en polling
     } finally {
@@ -81,7 +85,7 @@ export default function MeseroHome() {
     setAbriendo(mesa.id);
     try {
       const visita = await api.mesas.abrir(mesa.id);
-      toast.success(`Mesa ${mesa.numero} abierta`);
+      toast.success(`${etiquetaMesa(mesa, mesas)} abierta`);
       setMesaPorAbrir(null);
       router.push(`/mesero/mesa/${visita.id}`);
     } catch (err) {
@@ -117,24 +121,34 @@ export default function MeseroHome() {
     );
   }
 
-  const libres = mesas.filter((m) => m.estado === 'libre').length;
+  // Zonas: cada mesa pertenece a una; sin zona válida cae en la primera.
+  const zona = zonas.find((z) => z.id === zonaActiva) ?? zonas[0] ?? null;
+  const zonaDe = (m: Mesa) => (m.zonaId && zonas.some((z) => z.id === m.zonaId) ? m.zonaId : zonas[0]?.id ?? null);
+  const mesasZona = zona ? mesas.filter((m) => zonaDe(m) === zona.id) : mesas;
+  const libres = mesasZona.filter((m) => m.estado === 'libre').length;
 
-  // Si al menos una mesa tiene posición asignada, renderizamos la matriz
-  // del salón. Si ninguna la tiene, caemos al grid responsive viejo.
-  const conPosicion = mesas.filter((m) => m.filaPosicion !== null && m.colPosicion !== null);
-  const sinPosicion = mesas.filter((m) => m.filaPosicion === null || m.colPosicion === null);
-  const usarMatriz = conPosicion.length > 0;
+  // Si la zona usa plano y tiene mesas ubicadas, se dibuja la matriz (con
+  // referencias como Entrada o Barra). Si no, grid por número.
+  const conPosicion = mesasZona.filter((m) => m.filaPosicion !== null && m.colPosicion !== null);
+  const sinPosicion = mesasZona
+    .filter((m) => m.filaPosicion === null || m.colPosicion === null)
+    .sort((a, b) => a.numero - b.numero);
+  const usarMatriz = (zona?.modo ?? 'plano') === 'plano' && conPosicion.length > 0;
+  const referencias = usarMatriz ? zona?.referencias ?? [] : [];
 
-  const filas = usarMatriz ? Math.max(...conPosicion.map((m) => m.filaPosicion!)) + 1 : 0;
-  const cols = usarMatriz ? Math.max(...conPosicion.map((m) => m.colPosicion!)) + 1 : 0;
-  const gridMap = new Map<string, typeof mesas[number]>();
-  for (const m of conPosicion) gridMap.set(`${m.filaPosicion},${m.colPosicion}`, m);
+  const filas = usarMatriz
+    ? Math.max(...conPosicion.map((m) => m.filaPosicion!), ...referencias.map((r) => r.fila + (r.alto ?? 1) - 1)) + 1
+    : 0;
+  const cols = usarMatriz
+    ? Math.max(...conPosicion.map((m) => m.colPosicion! + (m.ancho ?? 1) - 1), ...referencias.map((r) => r.col + r.ancho - 1)) + 1
+    : 0;
+  const porNumero = [...mesasZona].sort((a, b) => a.numero - b.numero);
 
   return (
     <div className="p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-[var(--carbon)]">Mister Luka</h2>
+        <h2 className="text-xl font-bold text-[var(--ink)]">{process.env.NEXT_PUBLIC_STORE_NAME || "FoxEats"}</h2>
         <span className="text-xs font-medium text-muted-foreground bg-white border border-border px-2.5 py-1 rounded-full">
           Mesero
         </span>
@@ -147,7 +161,7 @@ export default function MeseroHome() {
           className={[
             'flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-all',
             tabActivo === 'salon'
-              ? 'border-[var(--terracota)] text-[var(--terracota)]'
+              ? 'border-[var(--alerta)] text-[var(--alerta)]'
               : 'border-transparent text-muted-foreground hover:text-foreground',
           ].join(' ')}
         >
@@ -158,7 +172,7 @@ export default function MeseroHome() {
           className={[
             'flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-all',
             tabActivo === 'llevar_delivery'
-              ? 'border-[var(--terracota)] text-[var(--terracota)]'
+              ? 'border-[var(--alerta)] text-[var(--alerta)]'
               : 'border-transparent text-muted-foreground hover:text-foreground',
           ].join(' ')}
         >
@@ -168,39 +182,75 @@ export default function MeseroHome() {
 
       {tabActivo === 'salon' ? (
         <>
+          {zonas.length > 1 && (
+            <div role="tablist" aria-label="Zonas" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {zonas.map((z) => {
+                const on = z.id === zona?.id;
+                const libresZona = mesas.filter((m) => zonaDe(m) === z.id && m.estado === 'libre').length;
+                return (
+                  <button
+                    key={z.id}
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setZonaActiva(z.id)}
+                    className={[
+                      'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors',
+                      on
+                        ? 'border-[var(--tinta)] bg-[var(--tinta)] text-white'
+                        : 'border-border bg-white text-[var(--ink)] hover:bg-muted',
+                    ].join(' ')}
+                  >
+                    {z.nombre}
+                    <span className={on ? 'ml-1.5 font-medium text-white/70' : 'ml-1.5 font-medium text-muted-foreground'}>
+                      {libresZona} libre{libresZona !== 1 ? 's' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex items-baseline justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Distribución del salón</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{zona && zonas.length > 1 ? zona.nombre : 'Distribución del salón'}</h3>
             <span className="text-xs text-muted-foreground font-medium">
-              {libres} libre{libres !== 1 ? 's' : ''} · {mesas.length - libres} ocupada{mesas.length - libres !== 1 ? 's' : ''}
+              {libres} libre{libres !== 1 ? 's' : ''} · {mesasZona.length - libres} ocupada{mesasZona.length - libres !== 1 ? 's' : ''}
             </span>
           </div>
 
           {usarMatriz ? (
             <div className="space-y-4">
+              <div className="-mx-1 overflow-x-auto px-1">
               <div
-                className="rounded-2xl bg-[var(--crema)] p-3"
+                className="rounded-2xl bg-[var(--piedra)] p-3"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                  // Ancho mínimo por mesa: en teléfono el plano se desplaza en vez de apretarse
+                  gridTemplateColumns: `repeat(${cols}, minmax(104px, 1fr))`,
+                  minWidth: cols * 116,
+                  gridTemplateRows: `repeat(${filas}, auto)`,
                   gap: '0.75rem',
                 }}
               >
-                {Array.from({ length: filas * cols }).map((_, idx) => {
-                  const fila = Math.floor(idx / cols);
-                  const col = idx % cols;
-                  const mesa = gridMap.get(`${fila},${col}`);
-                  if (!mesa) {
-                    return <div key={`${fila}-${col}`} aria-hidden />;
-                  }
-                  return (
-                    <div
-                      key={mesa.id}
-                      className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}
-                    >
-                      <MesaCard mesa={mesa} onClick={() => handleMesaClick(mesa)} />
-                    </div>
-                  );
-                })}
+                {referencias.map((r) => (
+                  <div
+                    key={r.id}
+                    aria-hidden
+                    style={{ gridRow: `${r.fila + 1} / span ${r.alto ?? 1}`, gridColumn: `${r.col + 1} / span ${r.ancho}` }}
+                    className="flex min-h-[64px] items-center justify-center rounded-2xl px-2 text-xs font-semibold text-muted-foreground [background:repeating-linear-gradient(135deg,#EFEDE6_0_6px,#E6E3DA_6px_12px)]"
+                  >
+                    <span className="truncate">{r.etiqueta}</span>
+                  </div>
+                ))}
+                {conPosicion.map((mesa) => (
+                  <div
+                    key={mesa.id}
+                    style={{ gridRow: mesa.filaPosicion! + 1, gridColumn: `${mesa.colPosicion! + 1} / span ${mesa.ancho ?? 1}` }}
+                    className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}
+                  >
+                    <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
+                  </div>
+                ))}
+              </div>
               </div>
 
               {/* Mesas sin posición — listado al final */}
@@ -210,7 +260,7 @@ export default function MeseroHome() {
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {sinPosicion.map((mesa) => (
                       <div key={mesa.id} className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}>
-                        <MesaCard mesa={mesa} onClick={() => handleMesaClick(mesa)} />
+                        <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
                       </div>
                     ))}
                   </div>
@@ -220,19 +270,19 @@ export default function MeseroHome() {
               <button
                 onClick={handleParaLlevar}
                 disabled={abriendoLlevar}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--dorado)] bg-[var(--dorado)]/5 hover:bg-[var(--dorado)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
               >
                 <span className="text-2xl leading-none">🥡</span>
-                <span className="text-sm font-semibold text-[var(--dorado)]">
+                <span className="text-sm font-semibold text-[var(--tinta)]">
                   {abriendoLlevar ? 'Abriendo…' : 'Para llevar'}
                 </span>
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {mesas.map((mesa) => (
+              {porNumero.map((mesa) => (
                 <div key={mesa.id} className={abriendo === mesa.id ? 'opacity-50 pointer-events-none' : ''}>
-                  <MesaCard mesa={mesa} onClick={() => handleMesaClick(mesa)} />
+                  <MesaCard mesa={mesa} etiqueta={mesa.tipo === 'barra' ? etiquetaCorta(mesa, mesas) : undefined} onClick={() => handleMesaClick(mesa)} />
                 </div>
               ))}
 
@@ -240,10 +290,10 @@ export default function MeseroHome() {
               <button
                 onClick={handleParaLlevar}
                 disabled={abriendoLlevar}
-                className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--dorado)] bg-[var(--dorado)]/5 hover:bg-[var(--dorado)]/10 transition-colors p-4 h-full min-h-[100px] disabled:opacity-50 disabled:pointer-events-none"
+                className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 h-full min-h-[100px] disabled:opacity-50 disabled:pointer-events-none"
               >
                 <span className="text-2xl leading-none">🥡</span>
-                <span className="text-sm font-semibold text-[var(--dorado)]">
+                <span className="text-sm font-semibold text-[var(--tinta)]">
                   {abriendoLlevar ? 'Abriendo…' : 'Para llevar'}
                 </span>
               </button>
@@ -256,10 +306,10 @@ export default function MeseroHome() {
           <button
             onClick={handleParaLlevar}
             disabled={abriendoLlevar}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--dorado)] bg-[var(--dorado)]/5 hover:bg-[var(--dorado)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--tinta)] bg-[var(--tinta)]/5 hover:bg-[var(--tinta)]/10 transition-colors p-4 min-h-[64px] disabled:opacity-50 disabled:pointer-events-none"
           >
             <span className="text-2xl leading-none">🥡</span>
-            <span className="text-sm font-semibold text-[var(--dorado)]">
+            <span className="text-sm font-semibold text-[var(--tinta)]">
               {abriendoLlevar ? 'Abriendo…' : 'Nuevo pedido para llevar'}
             </span>
           </button>
@@ -282,14 +332,14 @@ export default function MeseroHome() {
                   <div
                     key={pedido.id}
                     onClick={() => router.push(`/mesero/mesa/${pedido.id}`)}
-                    className="flex flex-col justify-between p-4 rounded-xl border border-border bg-white hover:border-[var(--dorado)] cursor-pointer transition-all active:scale-[0.98] shadow-xs space-y-3"
+                    className="flex flex-col justify-between p-4 rounded-xl border border-border bg-white hover:border-[var(--tinta)] cursor-pointer transition-all active:scale-[0.98] shadow-xs space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className={[
                         'text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5',
                         pedido.tipo === 'delivery'
                           ? 'bg-blue-100 text-blue-800'
-                          : 'bg-[var(--dorado)]/20 text-[var(--dorado)]'
+                          : 'bg-[var(--tinta)]/20 text-[var(--tinta)]'
                       ].join(' ')}>
                         {pedido.tipo === 'delivery' ? '🛵 Delivery' : '🥡 Para llevar'}
                       </span>
@@ -297,7 +347,7 @@ export default function MeseroHome() {
                     </div>
 
                     <div className="space-y-1">
-                      <p className="font-bold text-sm text-[var(--carbon)] leading-none">
+                      <p className="font-bold text-sm text-[var(--ink)] leading-none">
                         {pedido.nombreCliente ?? 'Cliente sin nombre'}
                       </p>
                       {pedido.tipo === 'delivery' && pedido.direccionDelivery && (
@@ -316,7 +366,7 @@ export default function MeseroHome() {
                       <span className="text-xs text-muted-foreground">
                         {pedido.cantidadItems} {pedido.cantidadItems === 1 ? 'producto' : 'productos'}
                       </span>
-                      <span className="text-sm font-bold text-[var(--carbon)]">
+                      <span className="text-sm font-bold text-[var(--ink)]">
                         S/{pedido.total}
                       </span>
                     </div>
@@ -330,7 +380,7 @@ export default function MeseroHome() {
 
       <ConfirmDialog
         open={!!mesaPorAbrir}
-        title={mesaPorAbrir ? `Abrir mesa ${mesaPorAbrir.numero}` : ''}
+        title={mesaPorAbrir ? `Abrir ${mesaPorAbrir.tipo === 'barra' ? `${etiquetaMesa(mesaPorAbrir, mesas)} (Nº ${mesaPorAbrir.numero})` : `mesa ${mesaPorAbrir.numero}`}` : ''}
         description="Se abrirá una nueva visita y la mesa quedará ocupada."
         confirmLabel="Abrir mesa"
         loading={!!abriendo}
@@ -377,7 +427,7 @@ function NombreClienteDialog({ open, loading, onConfirm, onCancel }: NombreClien
         onClick={(e) => e.stopPropagation()}
       >
         <div className="space-y-1">
-          <h2 className="font-bold text-[var(--carbon)] text-lg">Nuevo pedido para llevar</h2>
+          <h2 className="font-bold text-[var(--ink)] text-lg">Nuevo pedido para llevar</h2>
           <p className="text-xs text-muted-foreground">Por favor, ingresa el nombre del cliente para identificar el pedido.</p>
         </div>
 
@@ -390,7 +440,7 @@ function NombreClienteDialog({ open, loading, onConfirm, onCancel }: NombreClien
             onChange={(e) => setNombre(e.target.value)}
             disabled={loading}
             autoFocus
-            className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)] bg-white text-[var(--carbon)] font-medium"
+            className="w-full h-10 px-3 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-[var(--tinta)] bg-white text-[var(--ink)] font-medium"
           />
         </div>
 
@@ -405,7 +455,7 @@ function NombreClienteDialog({ open, loading, onConfirm, onCancel }: NombreClien
           <Button
             onClick={() => onConfirm(nombreLimpio)}
             disabled={!puedeConfirmar}
-            className="bg-[var(--dorado)] hover:bg-[#c49238] text-[var(--carbon)] font-semibold disabled:opacity-40"
+            className="bg-[var(--tinta)] hover:bg-[var(--tinta-hover)] text-white font-semibold disabled:opacity-40"
           >
             {loading ? 'Abriendo…' : 'Iniciar pedido'}
           </Button>

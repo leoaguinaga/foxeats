@@ -49,7 +49,7 @@ export function CancelarRondaDialog({ open, loading, onConfirm, onCancel }: Prop
         onClick={(e) => e.stopPropagation()}
       >
         <div className="space-y-2">
-          <h2 className="font-bold text-[var(--carbon)] text-lg">Cancelar ronda</h2>
+          <h2 className="font-bold text-[var(--ink)] text-lg">Cancelar ronda</h2>
           <p className="text-sm text-muted-foreground">
             ¿Por qué se cancela? Se restaurará el stock de bebidas si aplica.
           </p>
@@ -71,8 +71,8 @@ export function CancelarRondaDialog({ open, loading, onConfirm, onCancel }: Prop
                   className={[
                     'text-xs px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50',
                     seleccionado
-                      ? 'bg-[var(--carbon)] text-white border-[var(--carbon)]'
-                      : 'bg-white text-[var(--carbon)] border-border hover:border-[var(--carbon)]',
+                      ? 'bg-[var(--ink)] text-white border-[var(--ink)]'
+                      : 'bg-white text-[var(--ink)] border-border hover:border-[var(--ink)]',
                   ].join(' ')}
                 >
                   {m}
@@ -92,7 +92,7 @@ export function CancelarRondaDialog({ open, loading, onConfirm, onCancel }: Prop
             placeholder="Escribe el motivo o elige uno de arriba…"
             rows={2}
             disabled={loading}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--terracota)]"
+            className="w-full text-sm px-3 py-2 rounded-lg border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--alerta)]"
           />
         </div>
 
@@ -107,7 +107,7 @@ export function CancelarRondaDialog({ open, loading, onConfirm, onCancel }: Prop
           <Button
             onClick={() => onConfirm(motivoLimpio)}
             disabled={!puedeConfirmar}
-            className="bg-[var(--terracota)] hover:bg-[#9e3726] text-white disabled:opacity-40"
+            className="bg-[var(--alerta)] hover:bg-[var(--alerta-hover)] text-white disabled:opacity-40"
           >
             {loading ? '…' : 'Cancelar ronda'}
           </Button>

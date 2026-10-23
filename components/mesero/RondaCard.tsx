@@ -37,19 +37,19 @@ export function RondaCard({ pedido, platoMap, onCancelar, onCancelarItem, cargan
     ].join(' ')}>
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-sm font-semibold text-[var(--carbon)]">{codigoRonda}</span>
+          <span className="font-mono text-sm font-semibold text-[var(--ink)]">{codigoRonda}</span>
           <span className="text-xs text-muted-foreground">· {hora}</span>
         </div>
         <EstadoBadge estado={pedido.estado} />
       </div>
 
       {pedido.paraLlevar && (
-        <div className="flex items-center gap-2 rounded-lg bg-[var(--dorado)]/10 px-3 py-1.5 border border-[var(--dorado)]/30">
+        <div className="flex items-center gap-2 rounded-lg bg-[var(--tinta)]/10 px-3 py-1.5 border border-[var(--tinta)]/30">
           <span className="text-base leading-none">🥡</span>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-[var(--dorado)] uppercase tracking-wide">Para llevar</p>
+            <p className="text-xs font-semibold text-[var(--tinta)] uppercase tracking-wide">Para llevar</p>
             {pedido.nombreClienteLlevar && (
-              <p className="text-sm font-medium text-[var(--carbon)] truncate">{pedido.nombreClienteLlevar}</p>
+              <p className="text-sm font-medium text-[var(--ink)] truncate">{pedido.nombreClienteLlevar}</p>
             )}
           </div>
         </div>
@@ -78,7 +78,7 @@ export function RondaCard({ pedido, platoMap, onCancelar, onCancelarItem, cargan
                 <button
                   onClick={() => onCancelarItem(item.id)}
                   disabled={cargando}
-                  className="text-xs text-muted-foreground hover:text-[var(--terracota)] transition-colors opacity-70 hover:opacity-100 px-1 py-0.5 font-bold"
+                  className="text-xs text-muted-foreground hover:text-[var(--alerta)] transition-colors opacity-70 hover:opacity-100 px-1 py-0.5 font-bold"
                   title="Cancelar producto"
                 >
                   ✕
@@ -96,7 +96,7 @@ export function RondaCard({ pedido, platoMap, onCancelar, onCancelarItem, cargan
           <button
             onClick={() => onCancelar(pedido.id)}
             disabled={cargando}
-            className="text-xs text-muted-foreground hover:text-[var(--terracota)] underline transition-colors disabled:opacity-40"
+            className="text-xs text-muted-foreground hover:text-[var(--alerta)] underline transition-colors disabled:opacity-40"
           >
             {cargando ? '…' : 'Cancelar ronda'}
           </button>

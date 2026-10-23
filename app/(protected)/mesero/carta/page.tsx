@@ -53,23 +53,23 @@ export default function CartaPage() {
         </p>
         <div className="flex items-center gap-3 mt-0.5">
           <span className="text-xs text-muted-foreground">S/{plato.precio}</span>
-          {plato.categoria?.descuentaStock && plato.stockActual !== null && (
-            <span className={['text-xs font-medium', plato.stockActual <= 0 ? 'text-[var(--terracota)]' : 'text-[var(--salvia)]'].join(' ')}>
-              {plato.stockActual <= 0 ? 'Agotado' : `${plato.stockActual} ${plato.nombreUnidadMinima ?? ''}`}
+          {plato.quedan !== null && (
+            <span className={['text-xs font-medium', plato.quedan <= 0 ? 'text-[var(--alerta)]' : 'text-[var(--ok)]'].join(' ')}>
+              {plato.quedan <= 0 ? 'Agotado' : plato.quedan === 1 ? 'queda 1' : `quedan ${plato.quedan}`}
             </span>
           )}
         </div>
       </div>
-      <button
+      {plato.quedan === null && <button
         onClick={() => handleToggle(plato)}
         disabled={toggling === plato.id}
         className={['rounded-full px-4 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50',
-          plato.disponible ? 'bg-[#fde8e4] text-[var(--terracota)] hover:bg-[#f9d0c9]'
-                           : 'bg-[#e8f0d8] text-[var(--salvia)] hover:bg-[#d8e4c4]',
+          plato.disponible ? 'bg-[var(--alerta-tint)] text-[var(--alerta)] hover:bg-[var(--alerta-tint-strong)]'
+                           : 'bg-[var(--ok-tint)] text-[var(--ok)] hover:bg-[var(--ok-tint-strong)]',
         ].join(' ')}
       >
         {plato.disponible ? 'No hay' : 'Hay'}
-      </button>
+      </button>}
     </div>
   );
 
@@ -95,11 +95,11 @@ export default function CartaPage() {
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-semibold text-[var(--carbon)]">Carta</h2>
+        <h2 className="text-xl font-semibold text-[var(--ink)]">Carta</h2>
         <span className="text-xs text-muted-foreground">{platos.filter((p) => !p.disponible).length} sin stock</span>
       </div>
 
-      <div className="flex items-center gap-2 sticky top-0 z-10 bg-[var(--crema)] py-2">
+      <div className="flex items-center gap-2 sticky top-0 z-10 bg-[var(--piedra)] py-2">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -107,13 +107,13 @@ export default function CartaPage() {
             placeholder="Buscar plato…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--tinta)]"
           />
         </div>
         <select
           value={filtroCat}
           onChange={(e) => setFiltroCat(e.target.value)}
-          className="h-10 px-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dorado)]"
+          className="h-10 px-3 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--tinta)]"
         >
           <option value="todas">Todas</option>
           {categorias.map((cat) => (

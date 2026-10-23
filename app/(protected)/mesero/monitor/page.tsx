@@ -18,7 +18,7 @@ function MinutosChip({ minutos }: { minutos: number }) {
       className={[
         'flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
         alerta
-          ? 'bg-[var(--terracota)] text-white animate-pulse'
+          ? 'bg-[var(--alerta)] text-white animate-pulse'
           : 'bg-muted text-muted-foreground',
       ].join(' ')}
     >
@@ -82,11 +82,11 @@ export default function MonitorPage() {
   return (
     <div className="p-5 space-y-5">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-semibold text-[var(--carbon)]">Monitor</h2>
+        <h2 className="text-xl font-semibold text-[var(--ink)]">Monitor</h2>
         <span className="text-xs text-muted-foreground">
           {rondas.length} ronda{rondas.length !== 1 ? 's' : ''} activa{rondas.length !== 1 ? 's' : ''}
           {rondas.filter((r) => r.minutosEspera >= ALERTA_MINUTOS).length > 0 && (
-            <span className="ml-2 text-[var(--terracota)] font-semibold">
+            <span className="ml-2 text-[var(--alerta)] font-semibold">
               · {rondas.filter((r) => r.minutosEspera >= ALERTA_MINUTOS).length} en alerta
             </span>
           )}
@@ -104,7 +104,7 @@ export default function MonitorPage() {
       {/* Listos — acción inmediata requerida */}
       {listos.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--dorado)] mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--tinta)] mb-3">
             ¡Listos para entregar ({listos.length})
           </h3>
           <div className="space-y-3">
@@ -168,12 +168,12 @@ function RondaMonitorCard({
     <div
       className={[
         'rounded-xl border bg-white p-4 space-y-3',
-        ronda.minutosEspera >= ALERTA_MINUTOS ? 'border-[var(--terracota)]' : 'border-border',
+        ronda.minutosEspera >= ALERTA_MINUTOS ? 'border-[var(--alerta)]' : 'border-border',
       ].join(' ')}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-2xl font-bold text-[var(--carbon)]">
+          <span className="text-2xl font-bold text-[var(--ink)]">
             Mesa {ronda.mesaNumero}
           </span>
           <MinutosChip minutos={ronda.minutosEspera} />
@@ -211,7 +211,7 @@ function RondaMonitorCard({
           size="sm"
           onClick={onEntregado}
           disabled={cargando}
-          className="w-full bg-[var(--salvia)] hover:bg-[#7a8a4e] text-white"
+          className="w-full bg-[var(--ok)] hover:bg-[var(--ok-hover)] text-white"
         >
           Marcar entregado
         </Button>

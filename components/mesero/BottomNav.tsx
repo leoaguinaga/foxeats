@@ -24,7 +24,7 @@ export function BottomNav() {
             className={[
               'flex flex-1 flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors',
               active
-                ? 'text-[var(--terracota)]'
+                ? 'text-[var(--alerta)]'
                 : 'text-muted-foreground hover:text-foreground',
             ].join(' ')}
           >

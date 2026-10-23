@@ -3,8 +3,8 @@ import { EstadoPedido } from '@/lib/types';
 const CONFIG: Record<EstadoPedido, { label: string; className: string }> = {
   pendiente:      { label: 'Pendiente',     className: 'bg-muted text-muted-foreground' },
   en_preparacion: { label: 'En cocina',     className: 'bg-blue-100 text-blue-700' },
-  listo:          { label: '¡Listo!',       className: 'bg-[#fdf3d8] text-[var(--dorado)] font-bold animate-pulse' },
-  entregado:      { label: 'Entregado',     className: 'bg-[#e8f0d8] text-[var(--salvia)]' },
+  listo:          { label: '¡Listo!',       className: 'bg-[var(--aji)] text-[var(--ink)] font-bold animate-pulse' },
+  entregado:      { label: 'Entregado',     className: 'bg-[var(--ok-tint)] text-[var(--ok)]' },
   cancelado:      { label: 'Cancelado',     className: 'bg-destructive/10 text-destructive' },
 };
 

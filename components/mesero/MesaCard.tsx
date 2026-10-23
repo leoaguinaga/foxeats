@@ -5,9 +5,11 @@ import { Mesa } from '@/lib/types';
 interface Props {
   mesa: Mesa;
   onClick: () => void;
+  /** Para puestos de barra: «B1» y su número debajo. */
+  etiqueta?: string;
 }
 
-export function MesaCard({ mesa, onClick }: Props) {
+export function MesaCard({ mesa, onClick, etiqueta }: Props) {
   const libre = mesa.estado === 'libre';
 
   return (
@@ -17,25 +19,29 @@ export function MesaCard({ mesa, onClick }: Props) {
         'relative flex flex-col items-center justify-center rounded-2xl border-2 p-6 transition-all active:scale-95 select-none',
         'min-h-[140px] w-full cursor-pointer',
         libre
-          ? 'bg-white border-[var(--salvia)] hover:bg-[#f5f9ee]'
-          : 'bg-[#fdf0ed] border-[var(--terracota)] hover:bg-[#fae5e1]',
+          ? 'bg-white border-[var(--ok)] hover:bg-[var(--ok-tint)]'
+          : 'bg-[var(--alerta-tint)] border-[var(--alerta)] hover:bg-[var(--alerta-tint-strong)]',
       ].join(' ')}
     >
       <span
         className={[
           'text-5xl font-bold leading-none',
-          libre ? 'text-[var(--carbon)]' : 'text-[var(--terracota)]',
+          libre ? 'text-[var(--ink)]' : 'text-[var(--alerta)]',
         ].join(' ')}
       >
-        {mesa.numero}
+        {etiqueta ?? mesa.numero}
       </span>
+
+      {etiqueta && (
+        <span className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">Nº {mesa.numero}</span>
+      )}
 
       <span
         className={[
           'mt-3 rounded-full px-3 py-0.5 text-xs font-semibold uppercase tracking-wide',
           libre
-            ? 'bg-[#e8f0d8] text-[var(--salvia)]'
-            : 'bg-[var(--terracota)] text-white',
+            ? 'bg-[var(--ok-tint)] text-[var(--ok)]'
+            : 'bg-[var(--alerta)] text-white',
         ].join(' ')}
       >
         {libre ? 'Libre' : 'Ocupada'}
