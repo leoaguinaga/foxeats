@@ -16,8 +16,14 @@ export const TIPO_LABEL: Record<TipoMovimientoStock, string> = {
   correccion: 'Corrección',
 };
 
+// «porción» → «porciones»: al sumar sílaba, la tilde aguda se pierde.
+const SIN_TILDE: Record<string, string> = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u' };
 export const plural = (nombre: string, n: number) =>
-  Math.abs(n) === 1 ? nombre : `${nombre}${/[aeiouáéíóú]$/i.test(nombre) ? 's' : 'es'}`;
+  Math.abs(n) === 1
+    ? nombre
+    : /[aeiouáéíóú]$/i.test(nombre)
+      ? `${nombre}s`
+      : `${nombre.replace(/([áéíóú])([ns])$/, (_, v: string, c: string) => SIN_TILDE[v] + c)}es`;
 
 /** Los insumos que se venden en octavos (pollo) se muestran en pollos y fracciones. */
 export const esFraccion = (i: Ins) => i.unidadesPorUnidadDeCompra === 8;

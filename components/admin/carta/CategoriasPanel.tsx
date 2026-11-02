@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChefHat, GripVertical, Package } from 'lucide-react';
+import { ChefHat, GripVertical, Package, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import type { CategoriaCarta } from '@/lib/types';
@@ -56,6 +56,17 @@ export function CategoriasPanel({ open, categorias, conteo, sinVincularPor, onCl
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudo actualizar la categoría');
       onCambio(previa);
+    }
+  }
+
+  async function eliminar(cat: CategoriaCarta) {
+    if (!window.confirm(`¿Borrar la categoría «${cat.nombre}»? No tiene platos.`)) return;
+    try {
+      await api.categorias.eliminar(cat.id);
+      onCambio(categorias.filter((c) => c.id !== cat.id));
+      toast.success(`Categoría «${cat.nombre}» borrada`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo borrar la categoría');
     }
   }
 
@@ -174,6 +185,17 @@ export function CategoriasPanel({ open, categorias, conteo, sinVincularPor, onCl
                   ayuda={c.descuentaStock ? 'Cada venta baja el insumo vinculado' : 'No descuenta stock'}
                   onClick={() => actualizar(c, { descuentaStock: !c.descuentaStock })}
                 />
+                {n === 0 && (
+                  <button
+                    type="button"
+                    aria-label={`Borrar la categoría ${c.nombre}`}
+                    title="Borrar categoría vacía"
+                    onClick={() => eliminar(c)}
+                    className="grid size-7 place-items-center rounded-md border border-[var(--linea)] bg-white text-[#9a9ca6] transition-colors hover:text-[var(--alerta)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--tinta)]"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                )}
               </div>
             </li>
           );

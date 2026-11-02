@@ -5,6 +5,7 @@ import { ArrowLeft, Copy, FolderInput, MoreHorizontal, Pencil, RotateCcw, Undo2 
 import type { CategoriaCarta, PlatoCarta } from '@/lib/types';
 import { Interruptor } from './Interruptor';
 import { formatoPrecio, leerPrecio, sinVincular } from './carta';
+import { plural } from '../stock/stock';
 
 // Columnas compartidas por la cabecera y las filas de cada categoría (escritorio).
 export const columnasFila = 'md:grid-cols-[minmax(0,1fr)_112px_96px_128px_40px]';
@@ -93,17 +94,17 @@ function Stock({ plato, categoria }: { plato: PlatoCarta; categoria: CategoriaCa
   }
   if (plato.stockActual === null) return <span className="hidden md:block" />;
   const n = plato.stockActual;
-  const unidad = abreviar(plato.nombreUnidadMinima);
+  const unidad = abreviar(plato.nombreUnidadMinima, n);
   const cls = n <= 0 ? 'font-medium text-[var(--alerta)]' : n <= 5 ? 'font-medium text-[var(--aviso)]' : 'text-[var(--pizarra)]';
   return <span className={`text-[12.5px] tabular-nums ${cls}`}>{n} {unidad}</span>;
 }
 
-function abreviar(unidad: string | null) {
+function abreviar(unidad: string | null, n: number) {
   if (!unidad) return '';
   const u = unidad.toLowerCase();
   if (u.startsWith('botella')) return 'bot.';
   if (u.startsWith('unidad')) return 'u.';
-  return u;
+  return plural(u, n);
 }
 
 function PrecioEditable({ precio, nombre, onGuardar }: {

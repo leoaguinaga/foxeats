@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { ChevronDown, ChevronUp, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, type InsumoStock } from '@/lib/api';
@@ -23,7 +22,13 @@ type Form = {
   disponible: boolean;
   insumoId: string;
   cantidad: number;
+  /** Datos del insumo nuevo cuando insumoId es NUEVO_INSUMO. */
+  stockInicial: string;
+  unidad: string;
 };
+
+/** Valor especial del selector: crear el insumo con este mismo producto, sin pasar por Stock. */
+const NUEVO_INSUMO = '__nuevo__';
 
 type Props = {
   panel: PanelPlato | null;
@@ -50,7 +55,7 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
   const inicial = useMemo<Form>(() => {
     if (panel.modo === 'editar') {
       const p = panel.plato;
-      return { nombre: p.nombre, descripcion: p.descripcion ?? '', precio: formatoPrecio(p.precio), categoriaId: p.categoriaId || p.categoria?.id, disponible: p.disponible, insumoId: '', cantidad: 1 };
+      return { nombre: p.nombre, descripcion: p.descripcion ?? '', precio: formatoPrecio(p.precio), categoriaId: p.categoriaId || p.categoria?.id, disponible: p.disponible, insumoId: '', cantidad: 1, stockInicial: '0', unidad: 'unidad' };
     }
     const b = panel.base;
     return {
@@ -59,8 +64,10 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
       precio: b ? formatoPrecio(b.precio) : '',
       categoriaId: panel.categoriaId ?? b?.categoriaId ?? categorias[0]?.id ?? '',
       disponible: true,
-      insumoId: '',
+      insumoId: categorias.find((c) => c.id === (panel.categoriaId ?? b?.categoriaId ?? categorias[0]?.id))?.descuentaStock ? NUEVO_INSUMO : '',
       cantidad: 1,
+      stockInicial: '0',
+      unidad: 'unidad',
     };
   }, [panel, categorias]);
 
@@ -101,7 +108,7 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
   };
   const insumo = insumos?.find((i) => i.id === form.insumoId);
   const sucio = JSON.stringify(form) !==
-    JSON.stringify({ ...inicial, insumoId: receta?.insumoId ?? '', cantidad: receta?.cantidadConsumida ?? 1 });
+    JSON.stringify({ ...inicial, insumoId: receta?.insumoId ?? inicial.insumoId, cantidad: receta?.cantidadConsumida ?? 1 });
 
   async function guardar() {
     setIntentado(true);
@@ -127,10 +134,22 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
 
       // Receta: un solo insumo por plato. Cambiarla es borrar la anterior y crear la nueva.
       if (usaStock) {
-        const cambio = (receta?.insumoId ?? '') !== form.insumoId || (receta && receta.cantidadConsumida !== form.cantidad);
+        let insumoId = form.insumoId;
+        if (insumoId === NUEVO_INSUMO) {
+          const unidad = form.unidad.trim() || 'unidad';
+          const nuevo = await api.insumos.create({
+            nombre: datos.nombre,
+            nombreUnidadMinima: unidad,
+            nombreUnidadCompra: unidad,
+            unidadesPorUnidadDeCompra: 1,
+            stockActual: Math.max(0, parseInt(form.stockInicial, 10) || 0),
+          });
+          insumoId = nuevo.id;
+        }
+        const cambio = (receta?.insumoId ?? '') !== insumoId || (receta && receta.cantidadConsumida !== form.cantidad);
         if (cambio) {
           if (receta) await api.platos.borrarReceta(receta.id);
-          if (form.insumoId) await api.platos.crearReceta(plato.id, { insumoId: form.insumoId, cantidadConsumida: form.cantidad });
+          if (insumoId) await api.platos.crearReceta(plato.id, { insumoId, cantidadConsumida: form.cantidad });
         }
       }
 
@@ -242,11 +261,6 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
             </p>
             {insumos === null ? (
               <div className="h-9 animate-pulse rounded-lg bg-[var(--muted)]" />
-            ) : insumos.length === 0 ? (
-              <p className="text-[12.5px] text-[var(--aviso)]">
-                {errorInsumos ? 'No se pudieron leer los insumos.' : 'Todavía no hay insumos.'}{' '}
-                <Link href="/admin/stock" className="font-medium text-[var(--tinta)] underline underline-offset-2">Créalos en Stock</Link> y vuelve a vincular este plato.
-              </p>
             ) : (
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2">
@@ -257,6 +271,7 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
                     className={inputCls}
                   >
                     <option value="">Sin vincular</option>
+                    <option value={NUEVO_INSUMO}>+ Crear insumo con este producto</option>
                     {insumos.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
                   </select>
                   <Stepper
@@ -267,8 +282,21 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
                     onChange={(n) => set('cantidad', n)}
                   />
                 </div>
+                {form.insumoId === NUEVO_INSUMO && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Campo label="Stock inicial" htmlFor="plato-stock-ini">
+                      <input id="plato-stock-ini" inputMode="numeric" value={form.stockInicial} onChange={(e) => set('stockInicial', e.target.value.replace(/\D/g, ''))} className={inputCls} />
+                    </Campo>
+                    <Campo label="Se cuenta en" htmlFor="plato-unidad">
+                      <input id="plato-unidad" value={form.unidad} onChange={(e) => set('unidad', e.target.value)} placeholder="botella, porción…" className={inputCls} />
+                    </Campo>
+                  </div>
+                )}
+                {errorInsumos && <p className="mt-2 text-[12.5px] text-[var(--aviso)]">No se pudieron leer los insumos existentes.</p>}
                 <p className="mt-2 text-[12.5px] text-[var(--pizarra)]">
-                  {insumo ? (
+                  {form.insumoId === NUEVO_INSUMO ? (
+                    <>Se crea el insumo «{form.nombre.trim() || 'este producto'}» en Stock al guardar. Después lo repones desde Stock.</>
+                  ) : insumo ? (
                     <>Cada venta baja <b className="text-[var(--ink)]">{form.cantidad} {insumo.nombreUnidadMinima}</b> · en Stock hay <b className={insumo.stockActual <= 0 ? 'text-[var(--alerta)]' : 'text-[var(--ink)]'}>{insumo.stockActual}</b> · con 0 se marca agotado solo</>
                   ) : (
                     <span className="text-[var(--aviso)]">Sin vincular, este plato no descuenta stock.</span>

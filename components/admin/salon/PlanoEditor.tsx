@@ -32,6 +32,12 @@ interface Props {
 
 const DRAG_TIPO = 'application/x-foxeats-plano';
 
+// crypto.randomUUID solo existe en HTTPS o localhost; en la red local (http://192.168…) no.
+const nuevoId = () =>
+  typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'ref-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
 export function PlanoEditor({
   zona, zonas, mesas, borrador, onCambio, seleccion, onSeleccion, onActualizarMesa, onEliminarMesa, onAgregar,
   multi, onMulti, onMoverVarias, onEliminarVarias,
@@ -160,7 +166,7 @@ export function PlanoEditor({
     }
     if (!lugar) { toast.error('No queda espacio en el plano'); return; }
     const anchoFinal = cabe(b, lugar.fila, lugar.col, ancho) ? ancho : 1;
-    const ref = { id: crypto.randomUUID(), etiqueta, fila: lugar.fila, col: lugar.col, ancho: anchoFinal, alto: 1 };
+    const ref = { id: nuevoId(), etiqueta, fila: lugar.fila, col: lugar.col, ancho: anchoFinal, alto: 1 };
     onCambio({ ...b, referencias: [...b.referencias, ref] });
     onSeleccion({ tipo: 'ref', id: ref.id });
   }

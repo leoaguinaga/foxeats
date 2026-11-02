@@ -10,7 +10,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const err = await res.json().catch(() => ({ message: 'Error desconocido' }));
     throw new Error(err.message ?? `Error ${res.status}`);
   }
-  return res.json();
+  // Nest responde 200 con cuerpo vacío cuando un endpoint devuelve null.
+  const texto = await res.text();
+  return (texto ? JSON.parse(texto) : null) as T;
 }
 
 export const api = {
@@ -76,6 +78,7 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+    eliminar: (id: string) => apiFetch<{ ok: boolean }>(`/categorias/${id}`, { method: 'DELETE' }),
   },
   platos: {
     /** Incluye los retirados de la carta; solo para administración. */
