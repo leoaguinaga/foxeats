@@ -3,6 +3,8 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
+    // El estado (disponibilidad, stock, mesas) cambia seguido: nunca servir una respuesta guardada.
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   });
