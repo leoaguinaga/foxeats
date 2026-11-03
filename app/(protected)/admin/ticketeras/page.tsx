@@ -89,11 +89,16 @@ export default function AdminTicketerasPage() {
     }
   }
 
-  async function handleTestPrint(tipo: Tipo, label: string) {
+  async function handleTestPrint(tipo: Tipo, label: string, modo: ModoTicketera) {
     setProbando(tipo);
     try {
       await api.ticketeras.testPrint(tipo);
-      toast.success(`Prueba enviada a ${label}`);
+      if (modo === 'simulada') {
+        // La prueba siempre sale por red, pero los tickets reales no mientras esté simulada.
+        toast(`Prueba enviada a ${label}, pero está en modo simulada: comandas, precuentas y boletas NO se imprimirán. Desmarca «Simulada» y guarda.`, { duration: 8000 });
+      } else {
+        toast.success(`Prueba enviada a ${label}`);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al imprimir');
     } finally {
@@ -167,7 +172,7 @@ export default function AdminTicketerasPage() {
                 </div>
 
                 <button
-                  onClick={() => handleTestPrint(t.tipo, t.label)}
+                  onClick={() => handleTestPrint(t.tipo, t.label, t.modo)}
                   disabled={!t.ip || probando === t.tipo}
                   title={t.ip ? 'Imprimir una página de prueba' : 'Configura una IP para probar'}
                   className="shrink-0 inline-flex items-center gap-1.5 text-sm font-medium px-3 h-9 rounded-lg border border-[var(--linea)] text-[var(--ink)] hover:bg-[var(--piedra)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tinta)]/25"

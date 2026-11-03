@@ -120,6 +120,7 @@ function RondaPedida({ pedido, numero, platoMap, ahora, ocupado, onEntregada, on
               <span className={['w-5 shrink-0 text-right font-semibold tabular-nums', cancelado ? 'text-[#8A8D98]' : 'text-[var(--ink)]'].join(' ')}>{i.cantidad}</span>
               <span className={['min-w-0 flex-1', cancelado ? 'text-[#8A8D98] line-through' : 'text-[var(--ink)]'].join(' ')}>
                 {nombre(i)}
+                {i.elecciones && <span className="mt-0.5 block text-[13px] text-[var(--pizarra)] no-underline">{i.elecciones.join(' + ')}</span>}
                 {i.notas && <span className="ml-1.5 text-[13px] text-[var(--pizarra)] no-underline">{i.notas}</span>}
               </span>
               {activa && !cancelado && (

@@ -102,7 +102,7 @@ export const api = {
     get: (visitaId: string) => apiFetch<import('./types').Visita>(`/visits/${visitaId}`),
     crearPedido: (
       visitaId: string,
-      items: Array<{ platoCartaId: string; cantidad: number; notas?: string }>,
+      items: Array<{ platoCartaId: string; cantidad: number; notas?: string; elecciones?: string[] }>,
       opciones: { paraLlevar?: boolean; nombreClienteLlevar?: string } = {},
     ) =>
       apiFetch<import('./types').Pedido>(`/visits/${visitaId}/orders`, {
@@ -173,14 +173,14 @@ export const api = {
       apiFetch<import('./types').Mesa>('/tables', { method: 'POST', body: JSON.stringify({ numero, capacidad, zonaId }) }),
     eliminarMesa:       (id: string) =>
       apiFetch(`/tables/${id}`, { method: 'DELETE' }),
-    crearPlato:         (data: { nombre: string; precio: string; categoriaId: string; descripcion?: string }) =>
+    crearPlato:         (data: { nombre: string; precio: string; categoriaId: string; descripcion?: string; mostrarDescripcionEnCocina?: boolean; combo?: { elegir: number; opciones: string[] } | null }) =>
       apiFetch<import('./types').PlatoCarta>('/platos', { method: 'POST', body: JSON.stringify(data) }),
     crearPlatosBulk:    (data: {
       categoriaId: string;
       platos: Array<{ nombre: string; precio: string; descripcion?: string }>;
     }) =>
       apiFetch<import('./types').PlatoCarta[]>('/platos/bulk', { method: 'POST', body: JSON.stringify(data) }),
-    editarPlato:        (id: string, data: { nombre?: string; precio?: string; categoriaId?: string; descripcion?: string | null }) =>
+    editarPlato:        (id: string, data: { nombre?: string; precio?: string; categoriaId?: string; descripcion?: string | null; mostrarDescripcionEnCocina?: boolean; combo?: { elegir: number; opciones: string[] } | null }) =>
       apiFetch<import('./types').PlatoCarta>(`/platos/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     toggleActivoPlato:  (id: string, activo: boolean) =>
       apiFetch(`/platos/${id}`, { method: 'PATCH', body: JSON.stringify({ activo }) }),
@@ -239,7 +239,7 @@ export const api = {
       }),
     crearPedidoLlevar: (data: {
       nombreCliente?: string;
-      items: Array<{ platoCartaId: string; cantidad: number; notas?: string }>;
+      items: Array<{ platoCartaId: string; cantidad: number; notas?: string; elecciones?: string[] }>;
     }) =>
       apiFetch<{ ok: boolean; visitaId: string; nombreCliente: string }>('/cash/pedidos/llevar', {
         method: 'POST',
@@ -250,7 +250,7 @@ export const api = {
       telefonoCliente?: string;
       direccionDelivery: string;
       costoEnvio: number;
-      items: Array<{ platoCartaId: string; cantidad: number; notas?: string }>;
+      items: Array<{ platoCartaId: string; cantidad: number; notas?: string; elecciones?: string[] }>;
     }) =>
       apiFetch<{ ok: boolean; visitaId: string }>('/cash/pedidos/delivery', {
         method: 'POST',
@@ -430,7 +430,7 @@ export interface MonitorItem {
   fechaCreacion: string;
   fechaListo: string | null;
   minutosEspera: number;
-  items: Array<{ platoCartaId: string; nombre: string; cantidad: number; notas: string | null }>;
+  items: Array<{ platoCartaId: string; nombre: string; cantidad: number; notas: string | null; elecciones?: string[] | null }>;
 }
 
 export type ModoTicketera = 'simulada' | 'red';

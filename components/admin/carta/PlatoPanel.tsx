@@ -20,6 +20,13 @@ type Form = {
   precio: string;
   categoriaId: string;
   disponible: boolean;
+  /** La comanda de cocina imprime la descripción bajo el nombre. */
+  mostrarDescripcionEnCocina: boolean;
+  /** Plato armable («Arma tu dúo»): se eligen `elegir` de las opciones al pedirlo. */
+  armable: boolean;
+  elegir: number;
+  /** Una opción por línea. */
+  opciones: string;
   insumoId: string;
   cantidad: number;
   /** Datos del insumo nuevo cuando insumoId es NUEVO_INSUMO. */
@@ -55,7 +62,7 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
   const inicial = useMemo<Form>(() => {
     if (panel.modo === 'editar') {
       const p = panel.plato;
-      return { nombre: p.nombre, descripcion: p.descripcion ?? '', precio: formatoPrecio(p.precio), categoriaId: p.categoriaId || p.categoria?.id, disponible: p.disponible, insumoId: '', cantidad: 1, stockInicial: '0', unidad: 'unidad' };
+      return { nombre: p.nombre, descripcion: p.descripcion ?? '', precio: formatoPrecio(p.precio), categoriaId: p.categoriaId || p.categoria?.id, disponible: p.disponible, mostrarDescripcionEnCocina: p.mostrarDescripcionEnCocina, armable: !!p.combo, elegir: p.combo?.elegir ?? 2, opciones: p.combo?.opciones.join('\n') ?? '', insumoId: '', cantidad: 1, stockInicial: '0', unidad: 'unidad' };
     }
     const b = panel.base;
     return {
@@ -64,6 +71,10 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
       precio: b ? formatoPrecio(b.precio) : '',
       categoriaId: panel.categoriaId ?? b?.categoriaId ?? categorias[0]?.id ?? '',
       disponible: true,
+      mostrarDescripcionEnCocina: b?.mostrarDescripcionEnCocina ?? false,
+      armable: !!b?.combo,
+      elegir: b?.combo?.elegir ?? 2,
+      opciones: b?.combo?.opciones.join('\n') ?? '',
       insumoId: categorias.find((c) => c.id === (panel.categoriaId ?? b?.categoriaId ?? categorias[0]?.id))?.descuentaStock ? NUEVO_INSUMO : '',
       cantidad: 1,
       stockInicial: '0',
@@ -106,13 +117,15 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
     nombre: !form.nombre.trim() ? 'Escribe el nombre del plato' : null,
     precio: precio === null ? 'Escribe un precio mayor a 0, por ejemplo 16.50' : null,
   };
+  const listaOpciones = form.opciones.split('\n').map((o) => o.trim()).filter(Boolean);
+  const errorOpciones = form.armable && listaOpciones.length < 1 ? 'Escribe al menos una opción, una por línea' : null;
   const insumo = insumos?.find((i) => i.id === form.insumoId);
   const sucio = JSON.stringify(form) !==
     JSON.stringify({ ...inicial, insumoId: receta?.insumoId ?? inicial.insumoId, cantidad: receta?.cantidadConsumida ?? 1 });
 
   async function guardar() {
     setIntentado(true);
-    if (errores.nombre || errores.precio || !form.categoriaId) return;
+    if (errores.nombre || errores.precio || errorOpciones || !form.categoriaId) return;
     setGuardando(true);
     try {
       const datos = {
@@ -120,6 +133,8 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
         descripcion: form.descripcion.trim() || null,
         precio: precio!.toFixed(2),
         categoriaId: form.categoriaId,
+        mostrarDescripcionEnCocina: form.mostrarDescripcionEnCocina,
+        combo: form.armable ? { elegir: form.elegir, opciones: listaOpciones } : null,
       };
       let plato: PlatoCarta;
       if (editando) {
@@ -306,6 +321,45 @@ function FormPlato({ panel, categorias, onClose, onGuardado, onRetirar, onNavega
             )}
           </section>
         )}
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[13px] text-[var(--ink)]">
+            Mostrar la descripción en la comanda
+            <span className="block text-[12px] text-[var(--pizarra)]">Cocina la ve bajo el nombre; separa las partes con «+».</span>
+          </span>
+          <Interruptor activo={form.mostrarDescripcionEnCocina} etiqueta="Mostrar la descripción en la comanda" textoSi="Sí" textoNo="No" onChange={(v) => set('mostrarDescripcionEnCocina', v)} />
+        </div>
+
+        <section className="rounded-[9px] border border-[var(--linea)] bg-[#FDFCFA] p-3.5" aria-labelledby="plato-armable-h">
+          <div className="flex items-center justify-between gap-3">
+            <h3 id="plato-armable-h" className="text-[13px] font-semibold text-[var(--ink)]">
+              Se arma al pedir
+              <span className="block text-[12.5px] font-normal text-[var(--pizarra)]">Para dúos y combos: el mesero elige entre las opciones.</span>
+            </h3>
+            <Interruptor activo={form.armable} etiqueta="Se arma al pedir" textoSi="Sí" textoNo="No" onChange={(v) => set('armable', v)} />
+          </div>
+          {form.armable && (
+            <div className="mt-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13px] text-[var(--ink)]">Opciones a elegir</span>
+                <div className="w-[112px]"><Stepper value={form.elegir} min={1} max={6} etiqueta="a elegir" onChange={(n) => set('elegir', n)} /></div>
+              </div>
+              <Campo label="Opciones · una por línea" htmlFor="plato-opciones">
+                <textarea
+                  id="plato-opciones"
+                  rows={7}
+                  value={form.opciones}
+                  onChange={(e) => set('opciones', e.target.value)}
+                  placeholder={'Ceviche clásico\nCeviche de la casa\nChaufa de mariscos'}
+                  aria-invalid={intentado && !!errorOpciones}
+                  className={`${inputCls} h-auto resize-y py-2 leading-snug ${intentado && errorOpciones ? 'border-[var(--alerta)]' : ''}`}
+                />
+                {intentado && errorOpciones && <p className="text-xs text-[var(--alerta)]">{errorOpciones}</p>}
+              </Campo>
+              <p className="text-[12.5px] text-[var(--pizarra)]">Cada dúo se pide por separado y su elección sale en la comanda.</p>
+            </div>
+          )}
+        </section>
 
         <div className="flex items-center justify-between border-t border-[#EFEDE8] pt-3">
           <span className="text-[13px] text-[var(--ink)]">Disponible hoy</span>

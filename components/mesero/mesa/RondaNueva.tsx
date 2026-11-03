@@ -6,12 +6,15 @@ import type { PlatoCarta, PromocionVigente } from '@/lib/types';
 import { etiquetaDescuento } from '@/lib/promociones';
 import { soles } from '@/components/admin/caja/fechas';
 import { campoCaja } from '@/components/caja/Catalogo';
+import { claveLinea } from '@/components/caja/ElegirOpciones';
 import { Interruptor } from '@/components/admin/carta/Interruptor';
 
 export interface LineaRonda {
   plato: PlatoCarta;
   cantidad: number;
   notas: string;
+  clave?: string;
+  elecciones?: string[];
 }
 
 /**
@@ -65,17 +68,17 @@ export function RondaNueva({
               const promo = promos.get(l.plato.id);
               const max = maximo(l.plato);
               return (
-                <li key={l.plato.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2.5">
-                  <span className="text-[14px] font-semibold text-[var(--ink)]">{l.plato.nombre}</span>
+                <li key={claveLinea(l)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2.5">
+                  <span className="text-[14px] font-semibold text-[var(--ink)]">{l.plato.nombre}{l.elecciones && <span className="mt-0.5 block text-[13px] font-normal text-[var(--pizarra)]">{l.elecciones.join(' + ')}</span>}</span>
                   <span className="text-right text-[14px] font-semibold text-[var(--ink)] tabular-nums">
                     S/ {soles(precio(l.plato) * l.cantidad)}
                     {promo && <span className="ml-1.5 rounded bg-[var(--aji)] px-1 text-[10.5px] leading-4 font-bold">{etiquetaDescuento(promo)}</span>}
                   </span>
-                  {notaAbierta === l.plato.id ? (
+                  {notaAbierta === claveLinea(l) ? (
                     <input
                       autoFocus
                       value={l.notas}
-                      onChange={(e) => onAnotar(l.plato.id, e.target.value)}
+                      onChange={(e) => onAnotar(claveLinea(l), e.target.value)}
                       onBlur={() => setNotaAbierta(null)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === 'Escape') { e.stopPropagation(); setNotaAbierta(null); }
@@ -85,16 +88,16 @@ export function RondaNueva({
                       className="h-8 min-w-0 rounded-md border border-[var(--linea)] px-2 text-[13px] outline-none focus:border-[var(--tinta)]"
                     />
                   ) : (
-                    <button type="button" onClick={() => setNotaAbierta(l.plato.id)} className="justify-self-start truncate text-left text-[13px] font-medium text-[var(--tinta)] hover:underline">
+                    <button type="button" onClick={() => setNotaAbierta(claveLinea(l))} className="justify-self-start truncate text-left text-[13px] font-medium text-[var(--tinta)] hover:underline">
                       {l.notas ? <span className="text-[var(--pizarra)]">{l.notas}</span> : 'Agregar nota'}
                     </button>
                   )}
                   <span className="inline-flex items-center overflow-hidden rounded-lg border border-[var(--linea)]">
-                    <button type="button" onClick={() => onCambiar(l.plato.id, -1)} aria-label={l.cantidad === 1 ? `Quitar ${l.plato.nombre}` : `Uno menos de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)]">
+                    <button type="button" onClick={() => onCambiar(claveLinea(l), -1)} aria-label={l.cantidad === 1 ? `Quitar ${l.plato.nombre}` : `Uno menos de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)]">
                       {l.cantidad === 1 ? <X className="size-4" strokeWidth={1.9} /> : <Minus className="size-4" strokeWidth={1.9} />}
                     </button>
                     <span className="w-9 text-center text-[14px] font-semibold tabular-nums">{l.cantidad}</span>
-                    <button type="button" onClick={() => onCambiar(l.plato.id, 1)} disabled={l.cantidad >= max} aria-label={`Uno más de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)] disabled:opacity-35">
+                    <button type="button" onClick={() => onCambiar(claveLinea(l), 1)} disabled={l.cantidad >= max || !!l.clave} aria-label={`Uno más de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)] disabled:opacity-35">
                       <Plus className="size-4" strokeWidth={1.9} />
                     </button>
                   </span>

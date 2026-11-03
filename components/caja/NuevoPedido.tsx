@@ -5,11 +5,12 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Minus, Plus, X } from 'lucide-react';
 import { api, type VisitaResumen } from '@/lib/api';
 import type { PlatoCarta } from '@/lib/types';
+import { ElegirOpciones, cantidadesPorPlato, claveLinea, nuevaClave } from './ElegirOpciones';
 import { Catalogo, campoCaja as campo } from './Catalogo';
 import { soles } from '@/components/admin/caja/fechas';
 
 type Tipo = 'llevar' | 'delivery';
-type Linea = { plato: PlatoCarta; cantidad: number; notas: string };
+type Linea = { plato: PlatoCarta; cantidad: number; notas: string; clave?: string; elecciones?: string[] };
 
 const ENVIOS = ['3.00', '5.00', '8.00'];
 
@@ -41,7 +42,8 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
   const [ticketAbierto, setTicketAbierto] = useState(false);
 
   const actuales = lineas[tipo];
-  const cantidades = new Map(actuales.map((l) => [l.plato.id, l.cantidad]));
+  const cantidades = cantidadesPorPlato(actuales);
+  const [armando, setArmando] = useState<PlatoCarta | null>(null);
   const subtotal = actuales.reduce((s, l) => s + parseFloat(l.plato.precio) * l.cantidad, 0);
   const costoEnvio = parseFloat(envio || '0') || 0;
   const total = subtotal + (tipo === 'delivery' && actuales.length ? costoEnvio : 0);
@@ -54,20 +56,22 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
     setLineas((prev) => ({ ...prev, [tipo]: fn(prev[tipo]) }));
   }
 
-  const agregar = (plato: PlatoCarta) =>
-    editar((ls) => ls.some((l) => l.plato.id === plato.id)
-      ? ls.map((l) => (l.plato.id === plato.id ? { ...l, cantidad: l.cantidad + 1 } : l))
+  const agregar = (plato: PlatoCarta) => {
+    if (plato.combo) { setArmando(plato); return; }
+    editar((ls) => ls.some((l) => l.plato.id === plato.id && !l.clave)
+      ? ls.map((l) => (l.plato.id === plato.id && !l.clave ? { ...l, cantidad: l.cantidad + 1 } : l))
       : [...ls, { plato, cantidad: 1, notas: '' }]);
+  };
 
   const cambiar = (id: string, diff: number) =>
     editar((ls) => ls.flatMap((l) => {
-      if (l.plato.id !== id) return [l];
+      if (claveLinea(l) !== id) return [l];
       const cantidad = l.cantidad + diff;
       return cantidad > 0 ? [{ ...l, cantidad }] : [];
     }));
 
   const anotar = (id: string, notas: string) =>
-    editar((ls) => ls.map((l) => (l.plato.id === id ? { ...l, notas } : l)));
+    editar((ls) => ls.map((l) => (claveLinea(l) === id ? { ...l, notas } : l)));
 
   function limpiar() {
     setLineas((prev) => ({ ...prev, [tipo]: [] }));
@@ -83,7 +87,7 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
     if (tipo === 'delivery' && !direccion.trim()) { setError('Falta la dirección de entrega.'); return; }
     if (tipo === 'delivery' && costoEnvio < 0) { setError('El envío no puede ser negativo.'); return; }
 
-    const items = actuales.map((l) => ({ platoCartaId: l.plato.id, cantidad: l.cantidad, notas: l.notas.trim() || undefined }));
+    const items = actuales.map((l) => ({ platoCartaId: l.plato.id, cantidad: l.cantidad, notas: l.notas.trim() || undefined, elecciones: l.elecciones }));
     setGuardando(true);
     setError(null);
     try {
@@ -249,14 +253,14 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
             ) : (
               <ul className="divide-y divide-[var(--linea)]">
                 {actuales.map((l) => (
-                  <li key={l.plato.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2.5">
-                    <span className="text-[14px] font-semibold text-[var(--ink)]">{l.plato.nombre}</span>
+                  <li key={claveLinea(l)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2.5">
+                    <span className="text-[14px] font-semibold text-[var(--ink)]">{l.plato.nombre}{l.elecciones && <span className="mt-0.5 block text-[13px] font-normal text-[var(--pizarra)]">{l.elecciones.join(' + ')}</span>}</span>
                     <span className="text-right text-[14px] font-semibold text-[var(--ink)] tabular-nums">{soles(parseFloat(l.plato.precio) * l.cantidad)}</span>
-                    {notaAbierta === l.plato.id ? (
+                    {notaAbierta === claveLinea(l) ? (
                       <input
                         autoFocus
                         value={l.notas}
-                        onChange={(e) => anotar(l.plato.id, e.target.value)}
+                        onChange={(e) => anotar(claveLinea(l), e.target.value)}
                         onBlur={() => setNotaAbierta(null)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setNotaAbierta(null); }}
                         placeholder="Sin cebolla, bien dorado…"
@@ -264,16 +268,16 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
                         className="h-8 min-w-0 rounded-md border border-[var(--linea)] px-2 text-[13px] outline-none focus:border-[var(--tinta)]"
                       />
                     ) : (
-                      <button type="button" onClick={() => setNotaAbierta(l.plato.id)} className="justify-self-start truncate text-left text-[13px] font-medium text-[var(--tinta)] hover:underline">
+                      <button type="button" onClick={() => setNotaAbierta(claveLinea(l))} className="justify-self-start truncate text-left text-[13px] font-medium text-[var(--tinta)] hover:underline">
                         {l.notas ? <span className="text-[var(--pizarra)]">{l.notas}</span> : '+ Nota'}
                       </button>
                     )}
                     <span className="inline-flex items-center overflow-hidden rounded-lg border border-[var(--linea)]">
-                      <button type="button" onClick={() => cambiar(l.plato.id, -1)} aria-label={l.cantidad === 1 ? `Quitar ${l.plato.nombre}` : `Uno menos de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)]">
+                      <button type="button" onClick={() => cambiar(claveLinea(l), -1)} aria-label={l.cantidad === 1 ? `Quitar ${l.plato.nombre}` : `Uno menos de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)]">
                         {l.cantidad === 1 ? <X className="size-4" strokeWidth={1.9} /> : <Minus className="size-4" strokeWidth={1.9} />}
                       </button>
                       <span className="w-9 text-center text-[14px] font-semibold tabular-nums">{l.cantidad}</span>
-                      <button type="button" onClick={() => cambiar(l.plato.id, 1)} aria-label={`Uno más de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)]">
+                      <button type="button" onClick={() => cambiar(claveLinea(l), 1)} disabled={!!l.clave} aria-label={`Uno más de ${l.plato.nombre}`} className="grid h-9 w-10 place-items-center bg-[#FBFAF7] text-[var(--pizarra)] hover:text-[var(--ink)] disabled:opacity-35">
                         <Plus className="size-4" strokeWidth={1.9} />
                       </button>
                     </span>
@@ -328,6 +332,16 @@ export function NuevoPedido({ activo, productos, porCobrar, onVolver, onCreado }
           <span className="font-medium text-white/75">{unidades} {unidades === 1 ? 'producto' : 'productos'}</span>
           <span className="tabular-nums">Ver pedido · S/ {soles(total)}</span>
         </button>
+      )}
+      {armando && (
+        <ElegirOpciones
+          plato={armando}
+          onCancelar={() => setArmando(null)}
+          onConfirmar={(elecciones) => {
+            editar((ls) => [...ls, { plato: armando, cantidad: 1, notas: '', clave: nuevaClave(), elecciones }]);
+            setArmando(null);
+          }}
+        />
       )}
     </div>
   );

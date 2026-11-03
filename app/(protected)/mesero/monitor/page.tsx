@@ -202,6 +202,7 @@ function Tarjeta({ ronda, mia, conDueno, detalle, estado, enlace, children }: {
             <span className="w-5 shrink-0 text-right font-semibold tabular-nums">{i.cantidad}</span>
             <span className="min-w-0">
               {i.nombre}
+              {i.elecciones && <span className="block text-[13px] text-[var(--pizarra)]">{i.elecciones.join(' + ')}</span>}
               {i.notas && <span className="ml-1.5 text-[13px] text-[var(--pizarra)]">{i.notas}</span>}
             </span>
           </li>

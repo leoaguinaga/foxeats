@@ -8,6 +8,7 @@ import type { PlatoCarta } from '@/lib/types';
 import { CancelarRondaDialog } from '@/components/mesero/CancelarRondaDialog';
 import { hora, soles } from '@/components/admin/caja/fechas';
 import { Catalogo } from './Catalogo';
+import { ElegirOpciones, cantidadesPorPlato, claveLinea, nuevaClave } from './ElegirOpciones';
 
 const METODOS: Array<{ key: MetodoPago; label: string }> = [
   { key: 'efectivo', label: 'Efectivo' },
@@ -18,7 +19,7 @@ const METODOS: Array<{ key: MetodoPago; label: string }> = [
 
 // La primera línea es «automática»: absorbe lo que falta hasta que la cajera escribe su monto.
 type Linea = { id: number; metodo: MetodoPago; monto: string; auto?: boolean };
-type Adicion = { plato: PlatoCarta; cantidad: number };
+type Adicion = { plato: PlatoCarta; cantidad: number ; clave?: string; elecciones?: string[] };
 
 const num = (v: string | undefined | null) => parseFloat(v || '0') || 0;
 const limpiar = (v: string) => {
@@ -135,12 +136,16 @@ export function Cobro({ visita, detalle, productos, onCobrado, onCerrar, onRefre
     }
   }
 
-  const agregar = (plato: PlatoCarta) => setAdicion((prev) =>
-    prev.some((a) => a.plato.id === plato.id)
-      ? prev.map((a) => (a.plato.id === plato.id ? { ...a, cantidad: a.cantidad + 1 } : a))
-      : [...prev, { plato, cantidad: 1 }]);
-  const cambiarAdicion = (id: string, diff: number) => setAdicion((prev) =>
-    prev.flatMap((a) => (a.plato.id !== id ? [a] : a.cantidad + diff > 0 ? [{ ...a, cantidad: a.cantidad + diff }] : [])));
+  const [armando, setArmando] = useState<PlatoCarta | null>(null);
+  const agregar = (plato: PlatoCarta) => {
+    if (plato.combo) { setArmando(plato); return; }
+    setAdicion((prev) =>
+      prev.some((a) => a.plato.id === plato.id && !a.clave)
+        ? prev.map((a) => (a.plato.id === plato.id && !a.clave ? { ...a, cantidad: a.cantidad + 1 } : a))
+        : [...prev, { plato, cantidad: 1 }]);
+  };
+  const cambiarAdicion = (clave: string, diff: number) => setAdicion((prev) =>
+    prev.flatMap((a) => (claveLinea(a) !== clave ? [a] : a.cantidad + diff > 0 ? [{ ...a, cantidad: a.cantidad + diff }] : [])));
   const totalAdicion = adicion.reduce((s, a) => s + num(a.plato.precio) * a.cantidad, 0);
 
   async function enviarAdicion() {
@@ -150,7 +155,7 @@ export function Cobro({ visita, detalle, productos, onCobrado, onCerrar, onRefre
       const paraLlevar = visita.tipo === 'llevar' || visita.tipo === 'delivery';
       await api.visitas.crearPedido(
         visita.visitaId,
-        adicion.map((a) => ({ platoCartaId: a.plato.id, cantidad: a.cantidad })),
+        adicion.map((a) => ({ platoCartaId: a.plato.id, cantidad: a.cantidad, elecciones: a.elecciones })),
         paraLlevar ? { paraLlevar: true, nombreClienteLlevar: visita.nombreCliente || 'Cliente' } : {},
       );
       toast.success('Productos enviados a cocina');
@@ -225,7 +230,7 @@ export function Cobro({ visita, detalle, productos, onCobrado, onCerrar, onRefre
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
               <Catalogo
                 productos={productos}
-                cantidades={new Map(adicion.map((a) => [a.plato.id, a.cantidad]))}
+                cantidades={cantidadesPorPlato(adicion)}
                 onAgregar={agregar}
                 rejilla="grid-cols-2 sm:grid-cols-3"
               />
@@ -333,17 +338,18 @@ export function Cobro({ visita, detalle, productos, onCobrado, onCerrar, onRefre
                 ) : (
                   <ul className="divide-y divide-[var(--linea)]">
                     {adicion.map((a) => (
-                      <li key={a.plato.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <li key={claveLinea(a)} className="flex items-center justify-between gap-3 py-2.5">
                         <span className="min-w-0">
                           <span className="block text-[14px] font-semibold text-[var(--ink)]">{a.plato.nombre}</span>
+                          {a.elecciones && <span className="block text-[13px] text-[var(--pizarra)]">{a.elecciones.join(' + ')}</span>}
                           <span className="text-[13px] text-[var(--pizarra)] tabular-nums">S/ {soles(num(a.plato.precio) * a.cantidad)}</span>
                         </span>
                         <span className="inline-flex items-center overflow-hidden rounded-lg border border-[var(--linea)] bg-white">
-                          <button type="button" onClick={() => cambiarAdicion(a.plato.id, -1)} aria-label={`Uno menos de ${a.plato.nombre}`} className="grid h-9 w-10 place-items-center text-[var(--pizarra)]">
+                          <button type="button" onClick={() => cambiarAdicion(claveLinea(a), -1)} aria-label={`Uno menos de ${a.plato.nombre}`} className="grid h-9 w-10 place-items-center text-[var(--pizarra)]">
                             {a.cantidad === 1 ? <X className="size-4" strokeWidth={1.9} /> : <Minus className="size-4" strokeWidth={1.9} />}
                           </button>
                           <span className="w-8 text-center text-[14px] font-semibold tabular-nums">{a.cantidad}</span>
-                          <button type="button" onClick={() => cambiarAdicion(a.plato.id, 1)} aria-label={`Uno más de ${a.plato.nombre}`} className="grid h-9 w-10 place-items-center text-[var(--pizarra)]">
+                          <button type="button" onClick={() => cambiarAdicion(claveLinea(a), 1)} disabled={!!a.clave} aria-label={`Uno más de ${a.plato.nombre}`} className="grid h-9 w-10 place-items-center text-[var(--pizarra)] disabled:opacity-35">
                             <Plus className="size-4" strokeWidth={1.9} />
                           </button>
                         </span>
@@ -470,6 +476,17 @@ export function Cobro({ visita, detalle, productos, onCobrado, onCerrar, onRefre
           )}
         </section>
       </div>
+
+      {armando && (
+        <ElegirOpciones
+          plato={armando}
+          onCancelar={() => setArmando(null)}
+          onConfirmar={(elecciones) => {
+            setAdicion((prev) => [...prev, { plato: armando, cantidad: 1, clave: nuevaClave(), elecciones }]);
+            setArmando(null);
+          }}
+        />
+      )}
 
       <CancelarRondaDialog open={anulando} loading={ocupado} onConfirm={anular} onCancel={() => setAnulando(false)} />
     </div>

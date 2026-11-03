@@ -73,6 +73,9 @@ export interface PlatoCarta {
   categoria: CategoriaCarta;
   disponible: boolean;
   activo: boolean;
+  mostrarDescripcionEnCocina: boolean;
+  /** Plato armable: se eligen `elegir` de `opciones` al pedirlo. */
+  combo: { elegir: number; opciones: string[] } | null;
   descripcion: string | null;
   stockActual: number | null;
   nombreUnidadMinima: string | null;
@@ -99,6 +102,7 @@ export interface ItemPedido {
   descuentoUnitario: string;
   promocionAplicadaId: string | null;
   notas: string | null;
+  elecciones: string[] | null;
   estado: EstadoPedido;
 }
 

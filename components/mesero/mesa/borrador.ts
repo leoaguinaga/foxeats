@@ -1,6 +1,6 @@
 /** Ronda que el mesero está armando y todavía no envía a cocina. */
 export interface BorradorRonda {
-  lineas: Array<{ platoId: string; cantidad: number; notas: string }>;
+  lineas: Array<{ platoId: string; cantidad: number; notas: string; clave?: string; elecciones?: string[] }>;
   paraLlevar: boolean;
   nombre: string;
 }

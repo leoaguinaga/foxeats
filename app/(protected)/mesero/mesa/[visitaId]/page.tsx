@@ -15,6 +15,7 @@ import { Cabecera, tituloVisita } from '@/components/mesero/mesa/Cabecera';
 import { RondaNueva, type LineaRonda } from '@/components/mesero/mesa/RondaNueva';
 import { EnLaMesa } from '@/components/mesero/mesa/EnLaMesa';
 import { CancelarRonda } from '@/components/mesero/mesa/CancelarRonda';
+import { ElegirOpciones, cantidadesPorPlato, nuevaClave } from '@/components/caja/ElegirOpciones';
 import { RONDA_VACIA, guardarBorrador, leerBorrador, type BorradorRonda } from '@/components/mesero/mesa/borrador';
 
 type Pestana = 'ronda' | 'mesa';
@@ -93,9 +94,10 @@ export default function MesaPage() {
 
   const lineas: LineaRonda[] = ronda.lineas.flatMap((l) => {
     const plato = platoMap.get(l.platoId);
-    return plato ? [{ plato, cantidad: l.cantidad, notas: l.notas }] : [];
+    return plato ? [{ plato, cantidad: l.cantidad, notas: l.notas, clave: l.clave, elecciones: l.elecciones }] : [];
   });
-  const cantidades = new Map(lineas.map((l) => [l.plato.id, l.cantidad]));
+  const cantidades = cantidadesPorPlato(lineas);
+  const [armando, setArmando] = useState<PlatoCarta | null>(null);
   const unidades = lineas.reduce((s, l) => s + l.cantidad, 0);
   const totalRonda = lineas.reduce((s, l) => s + precio(l.plato) * l.cantidad, 0);
 
@@ -117,6 +119,7 @@ export default function MesaPage() {
   }
 
   function agregar(plato: PlatoCarta) {
+    if (plato.combo) { setArmando(plato); return; }
     const actual = cantidades.get(plato.id) ?? 0;
     const max = maximo(plato);
     if (actual >= max) {
@@ -126,24 +129,24 @@ export default function MesaPage() {
     setPestana('ronda');
     editar((b) => ({
       ...b,
-      lineas: b.lineas.some((l) => l.platoId === plato.id)
-        ? b.lineas.map((l) => (l.platoId === plato.id ? { ...l, cantidad: l.cantidad + 1 } : l))
+      lineas: b.lineas.some((l) => l.platoId === plato.id && !l.clave)
+        ? b.lineas.map((l) => (l.platoId === plato.id && !l.clave ? { ...l, cantidad: l.cantidad + 1 } : l))
         : [...b.lineas, { platoId: plato.id, cantidad: 1, notas: '' }],
     }));
   }
 
-  const cambiar = (platoId: string, diff: number) =>
+  const cambiar = (clave: string, diff: number) =>
     editar((b) => ({
       ...b,
       lineas: b.lineas.flatMap((l) => {
-        if (l.platoId !== platoId) return [l];
+        if ((l.clave ?? l.platoId) !== clave) return [l];
         const cantidad = l.cantidad + diff;
         return cantidad > 0 ? [{ ...l, cantidad }] : [];
       }),
     }));
 
-  const anotar = (platoId: string, notas: string) =>
-    editar((b) => ({ ...b, lineas: b.lineas.map((l) => (l.platoId === platoId ? { ...l, notas } : l)) }));
+  const anotar = (clave: string, notas: string) =>
+    editar((b) => ({ ...b, lineas: b.lineas.map((l) => ((l.clave ?? l.platoId) === clave ? { ...l, notas } : l)) }));
 
   const vaciar = useCallback(() => {
     const previa = ronda;
@@ -174,7 +177,7 @@ export default function MesaPage() {
     try {
       await api.visitas.crearPedido(
         visitaId,
-        items.map((l) => ({ platoCartaId: l.platoId, cantidad: l.cantidad, notas: l.notas.trim() || undefined })),
+        items.map((l) => ({ platoCartaId: l.platoId, cantidad: l.cantidad, notas: l.notas.trim() || undefined, elecciones: l.elecciones })),
         ronda.paraLlevar ? { paraLlevar: true, nombreClienteLlevar: nombre } : {},
       );
       toast.success('Ronda enviada a cocina');
@@ -426,6 +429,17 @@ export default function MesaPage() {
         onConfirm={liberar}
         onCancel={() => setConfirmarLiberar(false)}
       />
+      {armando && (
+        <ElegirOpciones
+          plato={armando}
+          onCancelar={() => setArmando(null)}
+          onConfirmar={(elecciones) => {
+            setPestana('ronda');
+            editar((b) => ({ ...b, lineas: [...b.lineas, { platoId: armando.id, cantidad: 1, notas: '', clave: nuevaClave(), elecciones }] }));
+            setArmando(null);
+          }}
+        />
+      )}
     </div>
   );
 }
