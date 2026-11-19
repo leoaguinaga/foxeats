@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, MoreHorizontal, Printer } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, MoreHorizontal, Printer } from 'lucide-react';
 import type { Visita } from '@/lib/types';
 import { soles } from '@/components/admin/caja/fechas';
 import { duracionCorta, primerNombre } from '@/components/mesero/salon/servicio';
@@ -18,12 +18,13 @@ export function tituloVisita(v: Visita): string {
  * Cabecera de la mesa: qué mesa es, zona, hace cuánto se abrió y quién la
  * atiende; a la derecha el consumo, la precuenta y el menú «⋯».
  */
-export function Cabecera({ visita, ahora, consumo, imprimiendo, onPrecuenta, onLiberar }: {
+export function Cabecera({ visita, ahora, consumo, imprimiendo, onPrecuenta, onCambiarMesa, onLiberar }: {
   visita: Visita;
   ahora: number;
   consumo: number;
   imprimiendo: boolean;
   onPrecuenta: () => void;
+  onCambiarMesa: () => void;
   onLiberar: () => void;
 }) {
   const minutos = Math.max(0, Math.floor((ahora - new Date(visita.fechaApertura).getTime()) / 60000));
@@ -71,12 +72,12 @@ export function Cabecera({ visita, ahora, consumo, imprimiendo, onPrecuenta, onL
         <span className="max-sm:sr-only">{imprimiendo ? 'Imprimiendo…' : 'Precuenta'}</span>
       </button>
 
-      <MenuMas visita={visita} consumo={consumo} onLiberar={onLiberar} />
+      <MenuMas visita={visita} consumo={consumo} onCambiarMesa={onCambiarMesa} onLiberar={onLiberar} />
     </div>
   );
 }
 
-function MenuMas({ visita, consumo, onLiberar }: { visita: Visita; consumo: number; onLiberar: () => void }) {
+function MenuMas({ visita, consumo, onCambiarMesa, onLiberar }: { visita: Visita; consumo: number; onCambiarMesa: () => void; onLiberar: () => void }) {
   const [abierto, setAbierto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -105,6 +106,20 @@ function MenuMas({ visita, consumo, onLiberar }: { visita: Visita; consumo: numb
       </button>
       {abierto && (
         <div role="menu" className="absolute right-0 z-40 mt-1.5 w-64 overflow-hidden rounded-[10px] border border-[var(--linea)] bg-white py-1 shadow-[0_12px_30px_-12px_rgba(22,25,34,.35)]">
+          {mesa && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setAbierto(false); onCambiarMesa(); }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13.5px] font-medium text-[var(--ink)] hover:bg-[var(--piedra)]"
+              >
+                <ArrowLeftRight className="size-4 shrink-0 text-[var(--pizarra)]" strokeWidth={1.9} aria-hidden />
+                <span>Cambiar de mesa</span>
+              </button>
+              <div role="separator" className="my-1 border-t border-[var(--linea)]" />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"

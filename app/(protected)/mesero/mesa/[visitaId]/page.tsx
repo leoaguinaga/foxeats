@@ -15,6 +15,7 @@ import { Cabecera, tituloVisita } from '@/components/mesero/mesa/Cabecera';
 import { RondaNueva, type LineaRonda } from '@/components/mesero/mesa/RondaNueva';
 import { EnLaMesa } from '@/components/mesero/mesa/EnLaMesa';
 import { CancelarRonda } from '@/components/mesero/mesa/CancelarRonda';
+import { CambiarMesa } from '@/components/mesero/mesa/CambiarMesa';
 import { ElegirOpciones, cantidadesPorPlato, nuevaClave } from '@/components/caja/ElegirOpciones';
 import { RONDA_VACIA, guardarBorrador, leerBorrador, type BorradorRonda } from '@/components/mesero/mesa/borrador';
 
@@ -42,6 +43,9 @@ export default function MesaPage() {
   const [porCancelar, setPorCancelar] = useState<string | null>(null);
   const [confirmarLiberar, setConfirmarLiberar] = useState(false);
   const [liberando, setLiberando] = useState(false);
+  const [cambiarMesaAbierto, setCambiarMesaAbierto] = useState(false);
+  const [cambiandoMesa, setCambiandoMesa] = useState(false);
+  const [errorCambioMesa, setErrorCambioMesa] = useState<string | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
   const [ahora, setAhora] = useState(() => Date.now());
 
@@ -192,7 +196,7 @@ export default function MesaPage() {
   }, [enviando, visita, ronda, platoMap, visitaId, fetchVisita]);
 
   // ⌘/Ctrl + Enter envía; Esc baja la hoja o, sin nada abierto, vacía la ronda.
-  const hayDialogo = !!porCancelar || confirmarLiberar;
+  const hayDialogo = !!porCancelar || confirmarLiberar || cambiarMesaAbierto;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (hayDialogo) return;
@@ -262,6 +266,22 @@ export default function MesaPage() {
     }
   }
 
+  async function cambiarMesa(nuevaMesaId: string, etiquetaDestino: string) {
+    if (!visita) return;
+    setCambiandoMesa(true);
+    setErrorCambioMesa(null);
+    try {
+      const actualizada = await api.visitas.cambiarMesa(visita.id, nuevaMesaId);
+      setVisita(actualizada);
+      setCambiarMesaAbierto(false);
+      toast.success(`Cuenta movida a ${actualizada.mesa?.etiqueta ?? etiquetaDestino}`);
+    } catch (err) {
+      setErrorCambioMesa(err instanceof Error ? err.message : 'No se pudo cambiar de mesa');
+    } finally {
+      setCambiandoMesa(false);
+    }
+  }
+
   async function liberar() {
     if (!visita) return;
     setLiberando(true);
@@ -310,6 +330,7 @@ export default function MesaPage() {
         consumo={consumo}
         imprimiendo={imprimiendo}
         onPrecuenta={precuenta}
+        onCambiarMesa={() => { setErrorCambioMesa(null); setCambiarMesaAbierto(true); }}
         onLiberar={() => setConfirmarLiberar(true)}
       />
 
@@ -414,6 +435,16 @@ export default function MesaPage() {
         guardando={!!porCancelar && ocupado === porCancelar}
         onConfirmar={cancelarRonda}
         onCerrar={() => setPorCancelar(null)}
+      />
+
+      <CambiarMesa
+        open={cambiarMesaAbierto}
+        mesaActualId={visita.mesaId}
+        mesaActualEtiqueta={tituloVisita(visita)}
+        guardando={cambiandoMesa}
+        error={errorCambioMesa}
+        onConfirmar={cambiarMesa}
+        onCerrar={() => setCambiarMesaAbierto(false)}
       />
 
       <ConfirmDialog

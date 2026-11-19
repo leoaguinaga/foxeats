@@ -111,6 +111,11 @@ export const api = {
       }),
     cerrar: (visitaId: string) =>
       apiFetch(`/visits/${visitaId}/close`, { method: 'POST' }),
+    cambiarMesa: (visitaId: string, mesaId: string) =>
+      apiFetch<import('./types').Visita>(`/visits/${visitaId}/table`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mesaId }),
+      }),
     imprimirCuenta: (visitaId: string) =>
       apiFetch<{ ok: boolean }>(`/visits/${visitaId}/print-bill`, { method: 'POST' }),
     abrirParaLlevar: (data?: { nombreCliente?: string }) =>
